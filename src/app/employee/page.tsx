@@ -5,18 +5,23 @@ import { AppShell } from "@/components/AppShell";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { useApp } from "@/lib/store";
-import { BrainCircuit, CalendarDays, GraduationCap, Bot, ArrowRight, Key } from "lucide-react";
+import { BrainCircuit, GraduationCap, Bot, ArrowRight, Key, ShieldAlert } from "lucide-react";
 
 export default function EmployeeHomePage() {
-  const { currentUser, rags, ragAssignments, bookings, ragQuestions } = useApp();
+  const { currentUser, rags, ragAssignments, ragQuestions, alertCases } = useApp();
   if (!currentUser) return null;
 
   const myAssignments = ragAssignments.filter((a) => a.userId === currentUser.id);
-  const myBookings = [...bookings]
-    .filter((b) => b.withUserId === currentUser.id)
-    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
-    .filter((b) => `${b.date}T${b.time}` >= new Date().toISOString().slice(0, 16));
   const myPending = ragQuestions.filter((q) => q.userId === currentUser.id && q.status !== "answered").length;
+  const myAlerts = alertCases.filter(
+    (c) => c.status === "open" && (c.userId === currentUser.id || c.ownerId === currentUser.id)
+  ).length;
+
+  const stats = [
+    { label: "RAG allocated", value: myAssignments.length, icon: BrainCircuit, tone: "text-brand bg-indigo-50", href: "/employee/my-rags" },
+    { label: "Pending responses", value: myPending, icon: GraduationCap, tone: "text-amber-600 bg-amber-50", href: "/employee/my-rags" },
+    { label: "Alerts", value: myAlerts, icon: ShieldAlert, tone: "text-red-600 bg-red-50", href: "/employee/alerts" },
+  ];
 
   return (
     <AppShell title={`Welcome back, ${currentUser.name.split(" ")[0]}`} subtitle={currentUser.jobTitle}>
@@ -30,42 +35,22 @@ export default function EmployeeHomePage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardBody className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-indigo-50 text-brand flex items-center justify-center">
-              <BrainCircuit size={16} />
-            </div>
-            <div>
-              <p className="text-lg font-semibold text-slate-900 leading-none">{myAssignments.length}</p>
-              <p className="text-xs text-slate-500 mt-1">RAGs assigned</p>
-            </div>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-              <GraduationCap size={16} />
-            </div>
-            <div>
-              <p className="text-lg font-semibold text-slate-900 leading-none">{myPending}</p>
-              <p className="text-xs text-slate-500 mt-1">Questions awaiting reply</p>
-            </div>
-          </CardBody>
-        </Card>
-        <Card className="col-span-2 lg:col-span-2">
-          <CardBody className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center">
-              <CalendarDays size={16} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-slate-900 leading-none">
-                {myBookings[0] ? `${myBookings[0].title} - ${myBookings[0].date}` : "No upcoming bookings"}
-              </p>
-              <p className="text-xs text-slate-500 mt-1">Next booking</p>
-            </div>
-          </CardBody>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        {stats.map((s) => (
+          <Link key={s.label} href={s.href}>
+            <Card className="hover:border-brand transition-colors">
+              <CardBody className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${s.tone}`}>
+                  <s.icon size={16} />
+                </div>
+                <div>
+                  <p className="text-lg font-semibold text-slate-900 leading-none">{s.value}</p>
+                  <p className="text-xs text-slate-500 mt-1">{s.label}</p>
+                </div>
+              </CardBody>
+            </Card>
+          </Link>
+        ))}
       </div>
 
       <Card>

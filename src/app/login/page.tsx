@@ -8,8 +8,15 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
 import { Avatar } from "@/components/ui/Avatar";
 import { useApp } from "@/lib/store";
-import type { Role } from "@/lib/types";
-import { Building2, UserRound } from "lucide-react";
+import { isOrgLevel } from "@/lib/permissions";
+import type { AppUser, Role } from "@/lib/types";
+import { Building2, UserRound, Globe2 } from "lucide-react";
+
+function destinationFor(u: AppUser | null | undefined) {
+  if (!u) return "/employee";
+  if (u.role === "internal") return "/internal";
+  return isOrgLevel(u) ? "/dashboard" : "/employee";
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,9 +34,9 @@ export default function LoginPage() {
       setError("Enter an email and password to continue.");
       return;
     }
-    const ok = login(email, role);
-    if (ok) {
-      router.push(role === "organisation" ? "/dashboard" : "/employee");
+    const matched = login(email, role);
+    if (matched) {
+      router.push(destinationFor(matched));
     } else {
       setError("No account found for that role. Try a demo account below.");
     }
@@ -37,7 +44,8 @@ export default function LoginPage() {
 
   function quickLogin(userId: string) {
     loginAsDemoUser(userId);
-    router.push(role === "organisation" ? "/dashboard" : "/employee");
+    const u = users.find((x) => x.id === userId);
+    router.push(destinationFor(u));
   }
 
   return (
@@ -45,10 +53,10 @@ export default function LoginPage() {
       <h2 className="text-2xl font-semibold text-slate-900 mb-1">Welcome back</h2>
       <p className="text-sm text-slate-500 mb-6">Sign in to your SafeIQ account.</p>
 
-      <div className="grid grid-cols-2 gap-2 mb-6 p-1 bg-slate-100 rounded-lg">
+      <div className="grid grid-cols-3 gap-2 mb-6 p-1 bg-slate-100 rounded-lg">
         <button
           onClick={() => setRole("organisation")}
-          className={`flex items-center justify-center gap-2 rounded-md py-2 text-sm font-medium transition-colors ${
+          className={`flex items-center justify-center gap-1.5 rounded-md py-2 text-xs sm:text-sm font-medium transition-colors ${
             role === "organisation" ? "bg-white shadow-sm text-brand" : "text-slate-500 hover:text-slate-700"
           }`}
         >
@@ -56,11 +64,19 @@ export default function LoginPage() {
         </button>
         <button
           onClick={() => setRole("employee")}
-          className={`flex items-center justify-center gap-2 rounded-md py-2 text-sm font-medium transition-colors ${
+          className={`flex items-center justify-center gap-1.5 rounded-md py-2 text-xs sm:text-sm font-medium transition-colors ${
             role === "employee" ? "bg-white shadow-sm text-brand" : "text-slate-500 hover:text-slate-700"
           }`}
         >
           <UserRound size={16} /> Employee
+        </button>
+        <button
+          onClick={() => setRole("internal")}
+          className={`flex items-center justify-center gap-1.5 rounded-md py-2 text-xs sm:text-sm font-medium transition-colors ${
+            role === "internal" ? "bg-white shadow-sm text-brand" : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          <Globe2 size={16} /> SafeIQ Internal
         </button>
       </div>
 

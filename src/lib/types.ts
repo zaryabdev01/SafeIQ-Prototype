@@ -1,4 +1,13 @@
-export type Role = "organisation" | "employee";
+// "organisation" is the client's Super Admin - the original company sign-up
+// account with full control. "internal" is SafeIQ's own staff account, not
+// scoped to any one client organisation (preview-only in this prototype).
+export type Role = "organisation" | "employee" | "internal";
+
+// Sub-classification for team members (role: "employee"). Organisation accounts
+// don't carry a team role. Permissions are not yet differentiated by team role -
+// pending the client's answer on what each one should be able to do - this only
+// drives labelling and who can be picked as an alert owner for now.
+export type TeamRole = "employee" | "manager" | "support" | "administrator";
 
 export type Language = "English" | "Welsh" | "Polish" | "Urdu" | "French";
 export type Country = "United Kingdom" | "Ireland" | "France" | "Poland" | "Pakistan";
@@ -8,6 +17,7 @@ export interface AppUser {
   name: string;
   email: string;
   role: Role;
+  teamRole?: TeamRole;
   orgId: string;
   jobTitle?: string;
   avatarColor: string;
@@ -59,6 +69,7 @@ export interface RagAssignment {
   ragId: string;
   accessCode: string;
   assignedAt: string;
+  alertOwnerId?: string; // manager/support/administrator who recovers this person's alerts on this RAG
 }
 
 export interface DocumentVersion {
@@ -90,11 +101,10 @@ export interface RagQuestion {
   askedAt: string;
 }
 
-export interface AlertCategory {
+export interface AlertKeyword {
   id: string;
-  label: string;
+  keyword: string;
   enabled: boolean;
-  notifyEmails: string[];
 }
 
 export interface Rag {
@@ -105,8 +115,35 @@ export interface Rag {
   createdAt: string;
   createdBy: string;
   documents: RagDocument[];
-  alertCategories: AlertCategory[];
+  alertKeywords: AlertKeyword[];
   colorTag: string;
+}
+
+export type AlertCaseStatus = "open" | "closed";
+
+// Raised when a team member's question matches one of a RAG's alert keywords.
+// The flagged person and their designated alert owner (a manager/support/
+// administrator) converse on it here until the owner closes it.
+export interface AlertCase {
+  id: string;
+  orgId: string;
+  ragId: string;
+  userId: string;
+  ownerId: string;
+  keyword: string;
+  questionId?: string;
+  status: AlertCaseStatus;
+  createdAt: string;
+  closedAt?: string;
+  closedBy?: string;
+}
+
+export interface AlertCaseMessage {
+  id: string;
+  caseId: string;
+  senderId: string;
+  text: string;
+  sentAt: string;
 }
 
 export interface DashboardAlert {

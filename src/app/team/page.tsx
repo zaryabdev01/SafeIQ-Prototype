@@ -5,13 +5,20 @@ import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Field";
+import { Input, Select } from "@/components/ui/Field";
 import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { useApp } from "@/lib/store";
 import { timeAgo } from "@/lib/format";
 import { Send, Link2, RotateCcw, XCircle, Copy, ChevronRight } from "lucide-react";
-import type { InviteStatus } from "@/lib/types";
+import type { InviteStatus, TeamRole } from "@/lib/types";
+
+const TEAM_ROLE_LABEL: Record<TeamRole, string> = {
+  employee: "Employee",
+  manager: "Manager",
+  support: "Support",
+  administrator: "Administrator",
+};
 
 const statusTone: Record<InviteStatus, "amber" | "green" | "slate"> = {
   pending: "amber",
@@ -20,7 +27,7 @@ const statusTone: Record<InviteStatus, "amber" | "green" | "slate"> = {
 };
 
 export default function TeamPage() {
-  const { users, invites, createInvite, resendInvite, cancelInvite, ragAssignments } = useApp();
+  const { users, invites, createInvite, resendInvite, cancelInvite, ragAssignments, setTeamRole } = useApp();
   const [email, setEmail] = useState("");
   const [copied, setCopied] = useState("");
 
@@ -129,15 +136,31 @@ export default function TeamPage() {
           {employees.map((u) => {
             const codes = ragAssignments.filter((a) => a.userId === u.id);
             return (
-              <Link key={u.id} href={`/team/${u.id}`} className="px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors">
-                <Avatar name={u.name} color={u.avatarColor} size={36} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-slate-800 truncate">{u.name}</p>
-                  <p className="text-xs text-slate-500 truncate">{u.jobTitle} · {u.email}</p>
-                </div>
+              <div key={u.id} className="px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors">
+                <Link href={`/team/${u.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                  <Avatar name={u.name} color={u.avatarColor} size={36} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-800 truncate">{u.name}</p>
+                    <p className="text-xs text-slate-500 truncate">{u.jobTitle} · {u.email}</p>
+                  </div>
+                </Link>
+                <Select
+                  value={u.teamRole ?? "employee"}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setTeamRole(u.id, e.target.value as TeamRole)}
+                  className="!w-auto text-xs py-1.5"
+                >
+                  {(Object.keys(TEAM_ROLE_LABEL) as TeamRole[]).map((r) => (
+                    <option key={r} value={r}>
+                      {TEAM_ROLE_LABEL[r]}
+                    </option>
+                  ))}
+                </Select>
                 <Badge tone="indigo">{codes.length} RAG{codes.length === 1 ? "" : "s"}</Badge>
-                <ChevronRight size={16} className="text-slate-300" />
-              </Link>
+                <Link href={`/team/${u.id}`}>
+                  <ChevronRight size={16} className="text-slate-300" />
+                </Link>
+              </div>
             );
           })}
         </div>

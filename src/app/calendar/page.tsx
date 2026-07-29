@@ -8,8 +8,9 @@ import { Input, Select, FormRow, Textarea } from "@/components/ui/Field";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { useApp } from "@/lib/store";
+import { isOrgLevel } from "@/lib/permissions";
 import { monthMatrix, toIsoDate, isSameDay } from "@/lib/calendar";
-import { ChevronLeft, ChevronRight, Plus, Clock, Key, BrainCircuit } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, Key, BrainCircuit, RefreshCw, Check } from "lucide-react";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -25,8 +26,22 @@ export default function CalendarPage() {
   const [time, setTime] = useState("10:00");
   const [ragId, setRagId] = useState("");
   const [notes, setNotes] = useState("");
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [connecting, setConnecting] = useState(false);
 
-  const isOrg = currentUser?.role === "organisation";
+  function toggleGoogleSync() {
+    if (googleConnected) {
+      setGoogleConnected(false);
+      return;
+    }
+    setConnecting(true);
+    window.setTimeout(() => {
+      setConnecting(false);
+      setGoogleConnected(true);
+    }, 900);
+  }
+
+  const isOrg = isOrgLevel(currentUser);
   const visibleBookings = isOrg ? bookings : bookings.filter((b) => b.withUserId === currentUser?.id);
 
   const weeks = useMemo(() => monthMatrix(cursor.getFullYear(), cursor.getMonth()), [cursor]);
@@ -84,11 +99,24 @@ export default function CalendarPage() {
                 <ChevronRight size={16} />
               </button>
             </div>
-            {isOrg && (
-              <Button size="sm" onClick={() => setOpen(true)}>
-                <Plus size={14} /> New booking
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant={googleConnected ? "outline" : "secondary"} onClick={toggleGoogleSync} disabled={connecting}>
+                {googleConnected ? (
+                  <>
+                    <Check size={13} className="text-emerald-600" /> Synced with Google Calendar
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw size={13} className={connecting ? "animate-spin" : ""} /> {connecting ? "Connecting..." : "Connect Google Calendar"}
+                  </>
+                )}
               </Button>
-            )}
+              {isOrg && (
+                <Button size="sm" onClick={() => setOpen(true)}>
+                  <Plus size={14} /> New booking
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardBody>
             <div className="grid grid-cols-7 mb-1">

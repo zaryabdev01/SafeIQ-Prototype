@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useApp } from "@/lib/store";
+import { isOrgLevel } from "@/lib/permissions";
 import { Avatar } from "@/components/ui/Avatar";
 import {
   LayoutDashboard,
@@ -15,6 +16,7 @@ import {
   LogOut,
   Home,
   FolderKanban,
+  Globe2,
 } from "lucide-react";
 
 const orgNav = [
@@ -34,13 +36,15 @@ const employeeNav = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
+const internalNav = [{ href: "/internal", label: "Overview", icon: Globe2 }];
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { currentUser, logout } = useApp();
 
   if (!currentUser) return null;
-  const nav = currentUser.role === "organisation" ? orgNav : employeeNav;
+  const nav = currentUser.role === "internal" ? internalNav : isOrgLevel(currentUser) ? orgNav : employeeNav;
 
   function handleLogout() {
     logout();
@@ -79,7 +83,11 @@ export function Sidebar() {
           <Avatar name={currentUser.name} color={currentUser.avatarColor} size={32} />
           <div className="min-w-0">
             <p className="text-sm font-medium text-white truncate">{currentUser.name}</p>
-            <p className="text-xs text-slate-400 truncate">{currentUser.jobTitle}</p>
+            <p className="text-xs text-slate-400 truncate">
+              {currentUser.jobTitle}
+              {currentUser.role === "organisation" && " · Super Admin"}
+              {currentUser.teamRole === "administrator" && " · Administrator"}
+            </p>
           </div>
         </div>
         <button

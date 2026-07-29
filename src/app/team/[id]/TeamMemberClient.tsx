@@ -11,8 +11,16 @@ import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { useApp } from "@/lib/store";
 import { formatDateTime, timeAgo } from "@/lib/format";
-import { ArrowLeft, StickyNote, BellRing, BrainCircuit, Trash2, ChevronDown, Globe2, Languages } from "lucide-react";
-import type { AlertSeverity } from "@/lib/types";
+import { ArrowLeft, StickyNote, BellRing, BrainCircuit, Trash2, ChevronDown, Globe2, Languages, ShieldAlert } from "lucide-react";
+import type { AlertSeverity, TeamRole } from "@/lib/types";
+import { AlertCaseThread } from "@/components/AlertCaseThread";
+
+const TEAM_ROLE_LABEL: Record<TeamRole, string> = {
+  employee: "Employee",
+  manager: "Manager",
+  support: "Support",
+  administrator: "Administrator",
+};
 
 export function TeamMemberClient({ userId }: { userId: string }) {
   const {
@@ -26,7 +34,10 @@ export function TeamMemberClient({ userId }: { userId: string }) {
     addPersonAlertRule,
     removePersonAlertRule,
     assignRagToUser,
+    setTeamRole,
     loginHistory,
+    alertCases,
+    currentUser,
   } = useApp();
 
   const user = users.find((u) => u.id === userId);
@@ -36,12 +47,20 @@ export function TeamMemberClient({ userId }: { userId: string }) {
   const [ruleSeverity, setRuleSeverity] = useState<AlertSeverity>("medium");
   const [expandedRag, setExpandedRag] = useState<string | null>(null);
   const [assignRagId, setAssignRagId] = useState("");
+  const [assignOwnerId, setAssignOwnerId] = useState("");
   const [justAssignedCode, setJustAssignedCode] = useState<string | null>(null);
 
   const assignments = useMemo(() => ragAssignments.filter((a) => a.userId === userId), [ragAssignments, userId]);
   const availableRags = rags.filter((r) => !assignments.some((a) => a.ragId === r.id));
   const notes = notesByUser[userId] ?? [];
   const rules = personAlertsByUser[userId] ?? [];
+  const flaggedCases = useMemo(
+    () => alertCases.filter((c) => c.userId === userId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
+    [alertCases, userId]
+  );
+  const eligibleOwners = users.filter(
+    (u) => u.role === "employee" && u.id !== userId && u.teamRole && u.teamRole !== "employee"
+  );
   const lastLogin = [...loginHistory].filter((l) => l.userId === userId).sort((a, b) => (a.loginAt < b.loginAt ? 1 : -1))[0];
 
   if (!user) return notFound();
@@ -59,10 +78,11 @@ export function TeamMemberClient({ userId }: { userId: string }) {
   }
 
   function assign() {
-    if (!assignRagId) return;
-    const code = assignRagToUser(assignRagId, userId);
+    if (!assignRagId || !assignOwnerId) return;
+    const code = assignRagToUser(assignRagId, userId, assignOwnerId);
     setJustAssignedCode(code);
     setAssignRagId("");
+    setAssignOwnerId("");
   }
 
   return (
@@ -88,6 +108,22 @@ export function TeamMemberClient({ userId }: { userId: string }) {
               <Badge tone={user.twoFactorEnabled ? "green" : "slate"}>2FA {user.twoFactorEnabled ? "on" : "off"}</Badge>
               <Badge tone={user.ipLockEnabled ? "green" : "slate"}>IP lock {user.ipLockEnabled ? "on" : "off"}</Badge>
             </div>
+            {user.role === "employee" && (
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-xs text-slate-500">Account type</span>
+                <Select
+                  value={user.teamRole ?? "employee"}
+                  onChange={(e) => setTeamRole(user.id, e.target.value as TeamRole)}
+                  className="!w-auto text-xs py-1.5"
+                >
+                  {(Object.keys(TEAM_ROLE_LABEL) as TeamRole[]).map((r) => (
+                    <option key={r} value={r}>
+                      {TEAM_ROLE_LABEL[r]}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
           </div>
           {lastLogin && (
             <div className="text-xs text-slate-500 text-right">
@@ -127,13 +163,13 @@ export function TeamMemberClient({ userId }: { userId: string }) {
         <Card>
           <CardHeader>
             <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-              <BellRing size={15} /> Alerts for this person
+              <BellRing size={15} /> Custom alert rules
             </h2>
           </CardHeader>
           <CardBody>
             <div className="flex flex-col sm:flex-row gap-2 mb-4">
               <Input value={ruleCategory} onChange={(e) => setRuleCategory(e.target.value)} placeholder="e.g. Missed check-in" className="flex-1" />
-              <Select value={ruleSeverity} onChange={(e) => setRuleSeverity(e.target.value as AlertSeverity)} className="w-auto">
+              <Select value={ruleSeverity} onChange={(e) => setRuleSeverity(e.target.value as AlertSeverity)} className="!w-auto">
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
@@ -162,14 +198,29 @@ export function TeamMemberClient({ userId }: { userId: string }) {
         </Card>
       </div>
 
+      <Card className="mb-6">
+        <CardHeader>
+          <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+            <ShieldAlert size={15} /> Flagged alert words
+          </h2>
+          <Badge tone="slate">{flaggedCases.length}</Badge>
+        </CardHeader>
+        <CardBody className="space-y-3">
+          {flaggedCases.map((c) => (
+            <AlertCaseThread key={c.id} caseItem={c} canClose={true} currentUserId={currentUser?.id ?? "u-admin"} />
+          ))}
+          {flaggedCases.length === 0 && <p className="text-xs text-slate-400 text-center py-4">No keyword-flagged alerts for this person.</p>}
+        </CardBody>
+      </Card>
+
       <Card>
         <CardHeader>
           <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-            <BrainCircuit size={15} /> Assigned RAG systems
+            <BrainCircuit size={15} /> Assigned RAG systems &amp; audit of activity
           </h2>
           {availableRags.length > 0 && (
-            <div className="flex items-center gap-2">
-              <Select value={assignRagId} onChange={(e) => setAssignRagId(e.target.value)} className="w-auto text-xs py-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={assignRagId} onChange={(e) => setAssignRagId(e.target.value)} className="!w-auto text-xs py-1.5">
                 <option value="">Assign a RAG...</option>
                 {availableRags.map((r) => (
                   <option key={r.id} value={r.id}>
@@ -177,7 +228,15 @@ export function TeamMemberClient({ userId }: { userId: string }) {
                   </option>
                 ))}
               </Select>
-              <Button size="sm" onClick={assign} disabled={!assignRagId}>
+              <Select value={assignOwnerId} onChange={(e) => setAssignOwnerId(e.target.value)} className="!w-auto text-xs py-1.5">
+                <option value="">Who recovers their alerts?</option>
+                {eligibleOwners.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name} ({TEAM_ROLE_LABEL[o.teamRole ?? "employee"]})
+                  </option>
+                ))}
+              </Select>
+              <Button size="sm" onClick={assign} disabled={!assignRagId || !assignOwnerId}>
                 Assign
               </Button>
             </div>

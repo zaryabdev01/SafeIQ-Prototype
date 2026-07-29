@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useApp } from "@/lib/store";
+import { isOrgLevel } from "@/lib/permissions";
 import { Button } from "@/components/ui/Button";
 import { Input, Select, FormRow, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
@@ -75,7 +76,7 @@ export default function OnboardingPage() {
           <Button onClick={runAiSearch}>Ask AI &amp; search</Button>
         </div>
         <div className="flex flex-wrap items-center gap-3 mt-3">
-          <Select value={audience} onChange={(e) => setAudience(e.target.value as never)} className="w-auto">
+          <Select value={audience} onChange={(e) => setAudience(e.target.value as never)} className="!w-auto">
             <option value="all">All end user types</option>
             <option value="organisation">Organisation</option>
             <option value="employee">Employee</option>
@@ -94,7 +95,7 @@ export default function OnboardingPage() {
               Clear AI suggestions
             </button>
           )}
-          {currentUser?.role === "organisation" && (
+          {isOrgLevel(currentUser) && (
             <Button size="sm" variant="outline" className="ml-auto" onClick={() => setAddOpen(true)}>
               <Plus size={14} /> Add video (CRM)
             </Button>

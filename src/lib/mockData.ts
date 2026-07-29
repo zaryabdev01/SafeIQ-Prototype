@@ -1,4 +1,6 @@
 import type {
+  AlertCase,
+  AlertCaseMessage,
   AppUser,
   Booking,
   Conversation,
@@ -45,6 +47,7 @@ export const users: AppUser[] = [
     name: "Aisha Khan",
     email: "aisha.khan@brightcare.co.uk",
     role: "employee",
+    teamRole: "employee",
     orgId: ORG_ID,
     jobTitle: "Senior Care Worker",
     avatarColor: "#0d9488",
@@ -60,6 +63,7 @@ export const users: AppUser[] = [
     name: "Tom Green",
     email: "tom.green@brightcare.co.uk",
     role: "employee",
+    teamRole: "employee",
     orgId: ORG_ID,
     jobTitle: "Support Worker",
     avatarColor: "#b45309",
@@ -75,6 +79,7 @@ export const users: AppUser[] = [
     name: "Priya Patel",
     email: "priya.patel@brightcare.co.uk",
     role: "employee",
+    teamRole: "manager",
     orgId: ORG_ID,
     jobTitle: "Night Care Lead",
     avatarColor: "#be185d",
@@ -90,6 +95,7 @@ export const users: AppUser[] = [
     name: "Daniel Osei",
     email: "daniel.osei@brightcare.co.uk",
     role: "employee",
+    teamRole: "administrator",
     orgId: ORG_ID,
     jobTitle: "Domiciliary Care Worker",
     avatarColor: "#2563eb",
@@ -99,6 +105,21 @@ export const users: AppUser[] = [
     ipLockEnabled: false,
     allowedContacts: ["u-admin"],
     createdAt: "2026-05-20T09:00:00Z",
+  },
+  {
+    id: "u-safeiq-internal",
+    name: "Jordan Reyes",
+    email: "jordan.reyes@safeiq.io",
+    role: "internal",
+    orgId: ORG_ID,
+    jobTitle: "SafeIQ Platform Support",
+    avatarColor: "#0f172a",
+    country: "United Kingdom",
+    language: "English",
+    twoFactorEnabled: true,
+    ipLockEnabled: false,
+    allowedContacts: [],
+    createdAt: "2026-01-01T09:00:00Z",
   },
 ];
 
@@ -162,11 +183,12 @@ export const rags: Rag[] = [
         versions: [{ version: 1, uploadedAt: "2026-07-15T13:22:00Z", uploadedBy: "Morgan Ellis", note: "Initial upload" }],
       },
     ],
-    alertCategories: [
-      { id: "ac-1", label: "Suspected abuse or neglect", enabled: true, notifyEmails: ["morgan.ellis@brightcare.co.uk"] },
-      { id: "ac-2", label: "Client refusing medication", enabled: true, notifyEmails: ["morgan.ellis@brightcare.co.uk"] },
-      { id: "ac-3", label: "Lone working safety concern", enabled: true, notifyEmails: ["morgan.ellis@brightcare.co.uk"] },
-      { id: "ac-4", label: "General policy question", enabled: false, notifyEmails: [] },
+    alertKeywords: [
+      { id: "ak-1", keyword: "abuse", enabled: true },
+      { id: "ak-2", keyword: "neglect", enabled: true },
+      { id: "ak-3", keyword: "self-harm", enabled: true },
+      { id: "ak-4", keyword: "suicide", enabled: true },
+      { id: "ak-5", keyword: "unsafe", enabled: false },
     ],
   },
   {
@@ -198,9 +220,11 @@ export const rags: Rag[] = [
         ],
       },
     ],
-    alertCategories: [
-      { id: "ac-5", label: "Injury on shift", enabled: true, notifyEmails: ["morgan.ellis@brightcare.co.uk"] },
-      { id: "ac-6", label: "Equipment fault", enabled: true, notifyEmails: ["morgan.ellis@brightcare.co.uk"] },
+    alertKeywords: [
+      { id: "ak-6", keyword: "injury", enabled: true },
+      { id: "ak-7", keyword: "fault", enabled: true },
+      { id: "ak-8", keyword: "broken", enabled: true },
+      { id: "ak-9", keyword: "fire", enabled: false },
     ],
   },
   {
@@ -221,20 +245,21 @@ export const rags: Rag[] = [
         versions: [{ version: 1, uploadedAt: "2026-04-10T09:20:00Z", uploadedBy: "Morgan Ellis", note: "Initial upload" }],
       },
     ],
-    alertCategories: [
-      { id: "ac-7", label: "Change in client condition", enabled: true, notifyEmails: ["morgan.ellis@brightcare.co.uk"] },
-      { id: "ac-8", label: "Family complaint", enabled: false, notifyEmails: [] },
+    alertKeywords: [
+      { id: "ak-10", keyword: "family", enabled: true },
+      { id: "ak-11", keyword: "complaint", enabled: true },
+      { id: "ak-12", keyword: "deteriorating", enabled: true },
     ],
   },
 ];
 
 export const ragAssignments: RagAssignment[] = [
-  { userId: "u-aisha", ragId: "rag-safeguarding", accessCode: "AK-4471-SG", assignedAt: "2026-02-11T09:00:00Z" },
-  { userId: "u-aisha", ragId: "rag-careplans", accessCode: "AK-2290-CP", assignedAt: "2026-04-11T09:00:00Z" },
-  { userId: "u-tom", ragId: "rag-healthsafety", accessCode: "TG-8834-HS", assignedAt: "2026-03-05T09:00:00Z" },
-  { userId: "u-priya", ragId: "rag-safeguarding", accessCode: "PP-1123-SG", assignedAt: "2026-04-03T09:00:00Z" },
-  { userId: "u-priya", ragId: "rag-healthsafety", accessCode: "PP-5567-HS", assignedAt: "2026-04-03T09:00:00Z" },
-  { userId: "u-daniel", ragId: "rag-careplans", accessCode: "DO-9902-CP", assignedAt: "2026-05-21T09:00:00Z" },
+  { userId: "u-aisha", ragId: "rag-safeguarding", accessCode: "AK-4471-SG", assignedAt: "2026-02-11T09:00:00Z", alertOwnerId: "u-priya" },
+  { userId: "u-aisha", ragId: "rag-careplans", accessCode: "AK-2290-CP", assignedAt: "2026-04-11T09:00:00Z", alertOwnerId: "u-priya" },
+  { userId: "u-tom", ragId: "rag-healthsafety", accessCode: "TG-8834-HS", assignedAt: "2026-03-05T09:00:00Z", alertOwnerId: "u-priya" },
+  { userId: "u-priya", ragId: "rag-safeguarding", accessCode: "PP-1123-SG", assignedAt: "2026-04-03T09:00:00Z", alertOwnerId: "u-admin" },
+  { userId: "u-priya", ragId: "rag-healthsafety", accessCode: "PP-5567-HS", assignedAt: "2026-04-03T09:00:00Z", alertOwnerId: "u-admin" },
+  { userId: "u-daniel", ragId: "rag-careplans", accessCode: "DO-9902-CP", assignedAt: "2026-05-21T09:00:00Z", alertOwnerId: "u-priya" },
 ];
 
 export const ragQuestions: RagQuestion[] = [
@@ -401,4 +426,62 @@ export const chatMessages: ChatMessage[] = [
   { id: "m-1", conversationId: "conv-admin-aisha", senderId: "u-aisha", kind: "text", text: "Morning - all quiet on shift, checking in as scheduled.", sentAt: "2026-07-23T06:02:00Z" },
   { id: "m-2", conversationId: "conv-admin-aisha", senderId: "u-admin", kind: "text", text: "Received, thanks Aisha. Ping me if anything changes with Mrs Whitfield.", sentAt: "2026-07-23T06:05:00Z" },
   { id: "m-3", conversationId: "conv-admin-tom", senderId: "u-tom", kind: "text", text: "Flagged the hoist issue in room 4 via the Health & Safety RAG.", sentAt: "2026-07-23T07:46:00Z" },
+];
+
+export const alertCases: AlertCase[] = [
+  {
+    id: "case-1",
+    orgId: ORG_ID,
+    ragId: "rag-careplans",
+    userId: "u-daniel",
+    ownerId: "u-priya",
+    keyword: "family",
+    questionId: "q-4",
+    status: "open",
+    createdAt: "2026-07-23T09:05:00Z",
+  },
+  {
+    id: "case-2",
+    orgId: ORG_ID,
+    ragId: "rag-safeguarding",
+    userId: "u-aisha",
+    ownerId: "u-priya",
+    keyword: "abuse",
+    questionId: "q-1",
+    status: "closed",
+    createdAt: "2026-07-21T08:30:00Z",
+    closedAt: "2026-07-21T10:15:00Z",
+    closedBy: "u-priya",
+  },
+];
+
+export const alertCaseMessages: AlertCaseMessage[] = [
+  {
+    id: "acm-1",
+    caseId: "case-1",
+    senderId: "u-daniel",
+    text: "Mrs. Whitfield's family are asking why her care plan changed without notice, what do I tell them?",
+    sentAt: "2026-07-23T09:05:00Z",
+  },
+  {
+    id: "acm-2",
+    caseId: "case-1",
+    senderId: "u-priya",
+    text: "I'll call the family this afternoon and update you - don't discuss the change details with them until then.",
+    sentAt: "2026-07-23T09:20:00Z",
+  },
+  {
+    id: "acm-3",
+    caseId: "case-2",
+    senderId: "u-aisha",
+    text: "Logged the disclosure and submitted the Safeguarding Concern form as advised.",
+    sentAt: "2026-07-21T08:45:00Z",
+  },
+  {
+    id: "acm-4",
+    caseId: "case-2",
+    senderId: "u-priya",
+    text: "Reviewed the form, spoke with Aisha directly - handled correctly, no further action needed. Closing this out.",
+    sentAt: "2026-07-21T10:15:00Z",
+  },
 ];

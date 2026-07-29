@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
 import { useApp } from "@/lib/store";
+import { isOrgLevel } from "@/lib/permissions";
 import { timeAgo } from "@/lib/format";
 import { severityTone, Badge } from "@/components/ui/Badge";
 
@@ -11,7 +12,7 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
   const { currentUser, dashboardAlerts, markAlertRead } = useApp();
   const [open, setOpen] = useState(false);
 
-  const alerts = currentUser?.role === "organisation" ? dashboardAlerts : [];
+  const alerts = isOrgLevel(currentUser) ? dashboardAlerts : [];
   const unread = alerts.filter((a) => !a.read).length;
 
   return (
@@ -21,7 +22,7 @@ export function TopBar({ title, subtitle }: { title: string; subtitle?: string }
         {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
       </div>
 
-      {currentUser?.role === "organisation" && (
+      {isOrgLevel(currentUser) && (
         <div className="relative">
           <button
             onClick={() => setOpen((o) => !o)}
