@@ -9,12 +9,49 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea } from "@/components/ui/Field";
 import { useApp } from "@/lib/store";
 import { timeAgo } from "@/lib/format";
-import { BrainCircuit, Users, AlertTriangle, MapPin, CheckCircle2, Search } from "lucide-react";
+import { BrainCircuit, Users, AlertTriangle, MapPin, CheckCircle2, Search, FileWarning, ShieldCheck, FileSearch, Siren } from "lucide-react";
 
 export default function DashboardPage() {
-  const { rags, users, ragQuestions, dashboardAlerts, answerQuestion, markAlertRead, loginHistory } = useApp();
+  const {
+    currentUser,
+    rags: allRags,
+    users: allUsers,
+    ragQuestions: allRagQuestions,
+    dashboardAlerts: allDashboardAlerts,
+    answerQuestion,
+    markAlertRead,
+    loginHistory: allLoginHistory,
+    alertCases: allAlertCases,
+    alertCaseMessages,
+    incidents: allIncidents,
+    emergencyEvents: allEmergencyEvents,
+  } = useApp();
   const [replyFor, setReplyFor] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
+
+  const rags = useMemo(
+    () => allRags.filter((r) => r.orgId === currentUser?.orgId || r.sharedWithOrgIds?.includes(currentUser?.orgId ?? "")),
+    [allRags, currentUser]
+  );
+  const users = useMemo(() => allUsers.filter((u) => u.orgId === currentUser?.orgId), [allUsers, currentUser]);
+  const ragQuestions = useMemo(() => {
+    const ragIds = new Set(rags.map((r) => r.id));
+    return allRagQuestions.filter((q) => ragIds.has(q.ragId));
+  }, [allRagQuestions, rags]);
+  const dashboardAlerts = useMemo(
+    () => allDashboardAlerts.filter((a) => a.orgId === currentUser?.orgId),
+    [allDashboardAlerts, currentUser]
+  );
+  const loginHistory = useMemo(() => {
+    const userIds = new Set(users.map((u) => u.id));
+    return allLoginHistory.filter((l) => userIds.has(l.userId));
+  }, [allLoginHistory, users]);
+  const orgCases = useMemo(() => allAlertCases.filter((c) => c.orgId === currentUser?.orgId), [allAlertCases, currentUser]);
+  const incidents = useMemo(() => allIncidents.filter((i) => i.orgId === currentUser?.orgId), [allIncidents, currentUser]);
+  const emergencyEvents = useMemo(
+    () => allEmergencyEvents.filter((e) => e.orgId === currentUser?.orgId),
+    [allEmergencyEvents, currentUser]
+  );
 
   const [qSearch, setQSearch] = useState("");
   const [qRagFilter, setQRagFilter] = useState("");
@@ -62,25 +99,53 @@ export default function DashboardPage() {
     setReplyText("");
   }
 
+  const today = new Date().toISOString().slice(0, 10);
+  const ragsOutOfDate = rags.filter((r) => r.documents.some((d) => d.reviewDate && d.reviewDate < today)).length;
+  const newAlertCount = orgCases.filter((c) => c.status === "open" && alertCaseMessages.filter((m) => m.caseId === c.id).length <= 1).length;
+  const activeAlertCount = orgCases.filter((c) => c.status === "open").length;
+  const completedAlertCount = orgCases.filter((c) => c.status === "closed").length;
+  const activeEmergencies = emergencyEvents.filter((e) => e.status === "new" || e.status === "active").length;
+  const activeIncidents = incidents.filter((i) => i.status === "open").length;
+
   const stats = [
     { label: "Team members", value: users.filter((u) => u.role === "employee").length, icon: Users, tone: "text-teal-600 bg-teal-50", href: "/team" },
-    { label: "Active RAGs", value: rags.length, icon: BrainCircuit, tone: "text-brand bg-indigo-50", href: "/rag" },
-    { label: "Alerts", value: unreadAlerts, icon: AlertTriangle, tone: "text-red-600 bg-red-50", href: "#alerts-panel" },
+    { label: "Number of RAGs", value: rags.length, icon: BrainCircuit, tone: "text-brand bg-indigo-50", href: "/rag" },
+    { label: "RAG data out of date", value: ragsOutOfDate, icon: FileWarning, tone: "text-amber-600 bg-amber-50", href: "/rag" },
+    { label: "New alerts", value: newAlertCount, icon: AlertTriangle, tone: "text-red-600 bg-red-50", href: "/alerts" },
+    { label: "Active alerts", value: activeAlertCount, icon: AlertTriangle, tone: "text-amber-600 bg-amber-50", href: "/alerts" },
+    { label: "Completed alerts", value: completedAlertCount, icon: ShieldCheck, tone: "text-emerald-600 bg-emerald-50", href: "/alerts" },
+    {
+      label: "Emergencies",
+      value: activeEmergencies,
+      caption: `${emergencyEvents.length} total`,
+      icon: Siren,
+      tone: "text-red-600 bg-red-50",
+      href: "/emergencies",
+    },
+    {
+      label: "Incidents",
+      value: activeIncidents,
+      caption: `${incidents.length} total`,
+      icon: FileSearch,
+      tone: "text-slate-600 bg-slate-100",
+      href: "/incidents",
+    },
   ];
 
   return (
     <AppShell title="Dashboard" subtitle="Live overview across every RAG you manage">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {stats.map((s) => (
           <Link key={s.label} href={s.href}>
-            <Card className="hover:border-brand transition-colors">
+            <Card className="hover:border-brand transition-colors h-full">
               <CardBody className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${s.tone}`}>
                   <s.icon size={18} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-xl font-semibold text-slate-900 leading-none">{s.value}</p>
-                  <p className="text-xs text-slate-500 mt-1">{s.label}</p>
+                  <p className="text-xs text-slate-500 mt-1 truncate">{s.label}</p>
+                  {s.caption && <p className="text-[10px] text-slate-400">{s.caption}</p>}
                 </div>
               </CardBody>
             </Card>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BrainCircuit, Check, Lock, Send, Loader2 } from "lucide-react";
+import { BrainCircuit, Check, Lock, Send, Loader2, Mic, MicOff, Volume2, Flag } from "lucide-react";
 import { useApp } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
@@ -9,12 +9,14 @@ import { Badge } from "@/components/ui/Badge";
 import { timeAgo } from "@/lib/format";
 
 export function WidgetRagPanel() {
-  const { currentUser, rags, ragAssignments, ragQuestions, activeRagByUser, setActiveRagForUser, askRag } = useApp();
+  const { currentUser, rags, ragAssignments, ragQuestions, activeRagByUser, setActiveRagForUser, askRag, flagQuestionAsAlert } = useApp();
   const [codeInputFor, setCodeInputFor] = useState<string | null>(null);
   const [codeValue, setCodeValue] = useState("");
   const [codeError, setCodeError] = useState("");
   const [question, setQuestion] = useState("");
   const [thinking, setThinking] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [flagged, setFlagged] = useState<Set<string>>(new Set());
 
   const myAssignments = useMemo(
     () => (currentUser ? ragAssignments.filter((a) => a.userId === currentUser.id) : []),
@@ -49,10 +51,16 @@ export function WidgetRagPanel() {
     if (!question.trim() || !currentUser || !activeRagId) return;
     setThinking(true);
     setTimeout(() => {
-      askRag(activeRagId, currentUser.id, question.trim());
+      askRag(activeRagId, currentUser.id, question.trim(), voiceMode);
       setQuestion("");
       setThinking(false);
     }, 550);
+  }
+
+  function flagAnswer(questionId: string) {
+    if (!currentUser) return;
+    flagQuestionAsAlert(questionId, currentUser.id);
+    setFlagged((prev) => new Set(prev).add(questionId));
   }
 
   if (!currentUser) return null;
@@ -112,9 +120,24 @@ export function WidgetRagPanel() {
             </div>
             {history.map((q) => (
               <div key={q.id} className="space-y-1">
-                <div className="ml-auto max-w-[85%] bg-brand text-white text-xs rounded-2xl rounded-tr-sm px-3 py-2 w-fit">{q.text}</div>
+                <div className="ml-auto max-w-[85%] bg-brand text-white text-xs rounded-2xl rounded-tr-sm px-3 py-2 w-fit flex items-center gap-1.5">
+                  {q.askedViaVoice && <Mic size={10} className="text-indigo-200 shrink-0" />}
+                  {q.text}
+                </div>
                 {q.status === "answered" && q.answer && (
-                  <div className="mr-auto max-w-[85%] bg-slate-100 text-slate-700 text-xs rounded-2xl rounded-tl-sm px-3 py-2 w-fit">{q.answer}</div>
+                  <div className="mr-auto max-w-[85%] space-y-1">
+                    <div className="bg-slate-100 text-slate-700 text-xs rounded-2xl rounded-tl-sm px-3 py-2 w-fit flex items-start gap-1.5">
+                      {voiceMode && <Volume2 size={11} className="text-slate-400 shrink-0 mt-0.5" />}
+                      <span>{q.answer}</span>
+                    </div>
+                    <button
+                      onClick={() => flagAnswer(q.id)}
+                      disabled={flagged.has(q.id)}
+                      className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-red-600 disabled:text-emerald-600 disabled:cursor-default"
+                    >
+                      <Flag size={10} /> {flagged.has(q.id) ? "Flagged for review" : "Flag this answer"}
+                    </button>
+                  </div>
                 )}
                 {q.status !== "answered" && (
                   <div className="mr-auto max-w-[85%] bg-amber-50 text-amber-700 text-xs rounded-2xl rounded-tl-sm px-3 py-2 w-fit">
@@ -130,11 +153,20 @@ export function WidgetRagPanel() {
 
       {activeRag && (
         <div className="p-3 border-t border-slate-100 flex gap-2">
+          <button
+            onClick={() => setVoiceMode((v) => !v)}
+            title={voiceMode ? "Voice mode on - speak, agent replies aloud" : "Switch to voice mode"}
+            className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+              voiceMode ? "bg-brand text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+            }`}
+          >
+            {voiceMode ? <Mic size={15} /> : <MicOff size={15} />}
+          </button>
           <Input
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submitQuestion()}
-            placeholder="Ask this RAG a question..."
+            placeholder={voiceMode ? "Voice mode on - type to simulate speaking..." : "Ask this RAG a question..."}
             className="text-sm"
           />
           <Button onClick={submitQuestion} disabled={thinking}>

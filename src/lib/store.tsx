@@ -2,12 +2,18 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type {
+  AiSuggestedMetadata,
   AlertCase,
   AlertCaseMessage,
+  AlertTask,
   AppUser,
   Booking,
   ChatMessage,
+  ContentType,
   DashboardAlert,
+  EmergencyEvent,
+  EmergencyTrigger,
+  Incident,
   Invite,
   LoginHistoryEntry,
   Note,
@@ -18,24 +24,31 @@ import type {
   RagAssignment,
   RagDocument,
   RagQuestion,
+  RagTestResult,
   Role,
   TeamRole,
+  TestFeedback,
   Conversation,
 } from "./types";
 import {
+  INTERNAL_ORG_ID,
   ORG_ID,
   alertCases as seedAlertCases,
   alertCaseMessages as seedAlertCaseMessages,
+  alertTasks as seedAlertTasks,
   bookings as seedBookings,
   chatMessages as seedMessages,
   conversations as seedConversations,
   dashboardAlerts as seedAlerts,
+  emergencyEvents as seedEmergencyEvents,
+  incidents as seedIncidents,
   invites as seedInvites,
   loginHistory as seedLoginHistory,
   onboardingVideos as seedVideos,
   organisations as seedOrgs,
   ragAssignments as seedAssignments,
   ragQuestions as seedQuestions,
+  ragTestResults as seedRagTestResults,
   rags as seedRags,
   users as seedUsers,
 } from "./mockData";
@@ -59,6 +72,11 @@ function accessCode(nameHint: string) {
   return `${initials}-${num}-${Math.random().toString(36).slice(2, 4).toUpperCase()}`;
 }
 
+// Rough jitter around Leeds so mock GPS coordinates look plausible without wiring real geolocation.
+function mockGps() {
+  return { lat: 53.8008 + (Math.random() - 0.5) * 0.08, lng: -1.5491 + (Math.random() - 0.5) * 0.08 };
+}
+
 interface AppState {
   currentUserId: string | null;
   organisations: Organisation[];
@@ -77,6 +95,10 @@ interface AppState {
   personAlertsByUser: Record<string, PersonAlertRule[]>;
   alertCases: AlertCase[];
   alertCaseMessages: AlertCaseMessage[];
+  alertTasks: AlertTask[];
+  incidents: Incident[];
+  ragTestResults: RagTestResult[];
+  emergencyEvents: EmergencyEvent[];
 }
 
 function initialState(): AppState {
@@ -107,6 +129,10 @@ function initialState(): AppState {
     },
     alertCases: seedAlertCases,
     alertCaseMessages: seedAlertCaseMessages,
+    alertTasks: seedAlertTasks,
+    incidents: seedIncidents,
+    ragTestResults: seedRagTestResults,
+    emergencyEvents: seedEmergencyEvents,
   };
 }
 
@@ -131,13 +157,27 @@ interface AppContextValue extends AppState {
 
   updateOrganisation: (orgId: string, data: { name: string; sector: string }) => void;
 
-  createRag: (name: string, accessPassword: string) => Rag;
-  addDocumentToRag: (ragId: string, doc: Omit<RagDocument, "id" | "versions"> & { note: string }) => void;
+  createRag: (name: string, accessPassword: string, category: string, description: string) => Rag;
+  publishRag: (ragId: string) => void;
+  addDocumentToRag: (
+    ragId: string,
+    doc: { name: string; sizeKb: number; addedBy: string; addedAt: string; note: string; contentType?: ContentType; aiSuggestion?: AiSuggestedMetadata }
+  ) => void;
+  updateRagDocumentMetadata: (
+    ragId: string,
+    docId: string,
+    updates: Partial<Pick<RagDocument, "name" | "contentType" | "description" | "appliesTo" | "accessLevel" | "effectiveDate" | "reviewDate" | "owner" | "approvalStatus">>
+  ) => void;
   toggleAlertKeyword: (ragId: string, keywordId: string) => void;
   addAlertKeyword: (ragId: string, keyword: string) => void;
   removeAlertKeyword: (ragId: string, keywordId: string) => void;
+  setRagEscalationNote: (ragId: string, note: string) => void;
   answerQuestion: (questionId: string, answer: string) => void;
   assignRagToUser: (ragId: string, userId: string, alertOwnerId?: string) => string;
+  assignRagToOrg: (ragId: string, orgId: string) => void;
+
+  addRagTestResult: (ragId: string, question: string) => RagTestResult;
+  setTestFeedback: (resultId: string, feedback: TestFeedback) => void;
 
   createBooking: (b: Omit<Booking, "id" | "orgId">) => void;
 
@@ -146,15 +186,26 @@ interface AppContextValue extends AppState {
 
   addVideo: (v: Omit<OnboardingVideo, "id" | "order">) => void;
 
-  askRag: (ragId: string, userId: string, question: string) => RagQuestion;
+  askRag: (ragId: string, userId: string, question: string, askedViaVoice?: boolean) => RagQuestion;
   activeRagByUser: Record<string, string | null>;
   setActiveRagForUser: (userId: string, ragId: string | null) => void;
 
   sendChatMessage: (conversationId: string, senderId: string, text: string) => void;
+  createGroupConversation: (name: string, memberIds: string[], creatorId: string) => string;
   markAlertRead: (alertId: string) => void;
 
   sendAlertCaseMessage: (caseId: string, senderId: string, text: string) => void;
   closeAlertCase: (caseId: string, closedBy: string) => void;
+  addAlertParticipant: (caseId: string, userId: string) => void;
+  addAlertTask: (caseId: string, assigneeId: string, text: string) => void;
+  toggleAlertTask: (taskId: string) => void;
+  convertAlertToIncident: (caseId: string, investigatorId: string) => Incident;
+  closeIncident: (incidentId: string, findings: string) => void;
+  flagQuestionAsAlert: (questionId: string, raisedByUserId: string, note?: string) => void;
+  askInternalToJoin: (caseId: string) => void;
+
+  triggerEmergency: (userId: string, trigger: EmergencyTrigger, nominatedContact: string) => void;
+  resolveEmergency: (eventId: string, resolution: "satisfied" | "escalated") => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -216,6 +267,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         twoFactorEnabled: false,
         ipLockEnabled: false,
         allowedContacts: [],
+        directSignUp: true,
         createdAt: nowIso(),
       };
       return {
@@ -242,6 +294,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         twoFactorEnabled: false,
         ipLockEnabled: false,
         allowedContacts: ["u-admin"],
+        directSignUp: true,
         createdAt: nowIso(),
       };
       return { ...s, users: [...s.users, newUser], currentUserId: newUser.id };
@@ -249,13 +302,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const createInvite = useCallback((email: string) => {
-    setState((s) => ({
-      ...s,
-      invites: [
-        { id: id("inv"), email, orgId: ORG_ID, status: "pending", magicLink: `https://app.safeiq.io/join/mg-${Math.random().toString(36).slice(2, 8)}`, sentAt: nowIso() },
-        ...s.invites,
-      ],
-    }));
+    setState((s) => {
+      const actingUser = s.users.find((u) => u.id === s.currentUserId);
+      const orgId = actingUser?.orgId ?? ORG_ID;
+      return {
+        ...s,
+        invites: [
+          { id: id("inv"), email, orgId, status: "pending", magicLink: `https://app.safeiq.io/join/mg-${Math.random().toString(36).slice(2, 8)}`, sentAt: nowIso() },
+          ...s.invites,
+        ],
+      };
+    });
   }, []);
 
   const resendInvite = useCallback((inviteId: string) => {
@@ -317,23 +374,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, organisations: s.organisations.map((o) => (o.id === orgId ? { ...o, ...data } : o)) }));
   }, []);
 
-  const createRag = useCallback((name: string, accessPassword: string) => {
-    const newRag: Rag = {
-      id: id("rag"),
-      orgId: ORG_ID,
-      name,
-      accessPassword,
-      createdAt: nowIso(),
-      createdBy: "u-admin",
-      colorTag: ["#4f46e5", "#0d9488", "#be185d", "#b45309", "#2563eb"][Math.floor(Math.random() * 5)],
-      documents: [],
-      alertKeywords: [],
-    };
-    setState((s) => ({ ...s, rags: [newRag, ...s.rags] }));
-    return newRag;
+  const createRag = useCallback((name: string, accessPassword: string, category: string, description: string) => {
+    let created: Rag | null = null;
+    setState((s) => {
+      const actingUser = s.users.find((u) => u.id === s.currentUserId);
+      const orgId = actingUser?.role === "internal" ? INTERNAL_ORG_ID : actingUser?.orgId ?? ORG_ID;
+      const newRag: Rag = {
+        id: id("rag"),
+        orgId,
+        name,
+        accessPassword,
+        createdAt: nowIso(),
+        createdBy: actingUser?.id ?? "u-admin",
+        colorTag: ["#4f46e5", "#0d9488", "#be185d", "#b45309", "#2563eb"][Math.floor(Math.random() * 5)],
+        documents: [],
+        alertKeywords: [],
+        category,
+        description,
+        status: "draft",
+      };
+      created = newRag;
+      return { ...s, rags: [newRag, ...s.rags] };
+    });
+    return created as unknown as Rag;
   }, []);
 
-  const addDocumentToRag = useCallback((ragId: string, doc: Omit<RagDocument, "id" | "versions"> & { note: string }) => {
+  const publishRag = useCallback((ragId: string) => {
+    setState((s) => ({ ...s, rags: s.rags.map((r) => (r.id === ragId ? { ...r, status: "published" } : r)) }));
+  }, []);
+
+  const addDocumentToRag = useCallback((ragId: string, doc: Parameters<AppContextValue["addDocumentToRag"]>[1]) => {
     setState((s) => ({
       ...s,
       rags: s.rags.map((r) =>
@@ -341,7 +411,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ? {
               ...r,
               documents: [
-                { id: id("doc"), name: doc.name, sizeKb: doc.sizeKb, addedBy: doc.addedBy, addedAt: doc.addedAt, versions: [{ version: 1, uploadedAt: doc.addedAt, uploadedBy: doc.addedBy, note: doc.note }] },
+                {
+                  id: id("doc"),
+                  name: doc.name,
+                  sizeKb: doc.sizeKb,
+                  addedBy: doc.addedBy,
+                  addedAt: doc.addedAt,
+                  versions: [{ version: 1, uploadedAt: doc.addedAt, uploadedBy: doc.addedBy, note: doc.note }],
+                  contentType: doc.contentType ?? "Other",
+                  description: "",
+                  appliesTo: "Not confirmed",
+                  accessLevel: "everyone",
+                  owner: "Not confirmed",
+                  approvalStatus: "draft",
+                  aiSuggestion: doc.aiSuggestion,
+                },
                 ...r.documents,
               ],
             }
@@ -349,6 +433,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ),
     }));
   }, []);
+
+  const updateRagDocumentMetadata = useCallback(
+    (ragId: string, docId: string, updates: Parameters<AppContextValue["updateRagDocumentMetadata"]>[2]) => {
+      setState((s) => ({
+        ...s,
+        rags: s.rags.map((r) =>
+          r.id === ragId
+            ? { ...r, documents: r.documents.map((d) => (d.id === docId ? { ...d, ...updates, aiSuggestion: undefined } : d)) }
+            : r
+        ),
+      }));
+    },
+    []
+  );
 
   const toggleAlertKeyword = useCallback((ragId: string, keywordId: string) => {
     setState((s) => ({
@@ -377,6 +475,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  const setRagEscalationNote = useCallback((ragId: string, note: string) => {
+    setState((s) => ({ ...s, rags: s.rags.map((r) => (r.id === ragId ? { ...r, escalationNote: note } : r)) }));
+  }, []);
+
   const answerQuestion = useCallback((questionId: string, answer: string) => {
     setState((s) => ({
       ...s,
@@ -397,8 +499,75 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return code;
   }, []);
 
+  const assignRagToOrg = useCallback((ragId: string, orgId: string) => {
+    setState((s) => ({
+      ...s,
+      rags: s.rags.map((r) =>
+        r.id === ragId ? { ...r, sharedWithOrgIds: [...new Set([...(r.sharedWithOrgIds ?? []), orgId])] } : r
+      ),
+    }));
+  }, []);
+
+  const addRagTestResult = useCallback((ragId: string, question: string) => {
+    let created: RagTestResult | null = null;
+    setState((s) => {
+      const rag = s.rags.find((r) => r.id === ragId);
+      const lowerQuestion = question.toLowerCase();
+      const matchedKeyword = rag?.alertKeywords.find((k) => k.enabled && lowerQuestion.includes(k.keyword.toLowerCase()));
+      const qWords = lowerQuestion.split(/\W+/).filter((w) => w.length > 3);
+      const docMatches = rag?.documents.filter((d) => qWords.some((w) => d.name.toLowerCase().includes(w))) ?? [];
+
+      let result: RagTestResult;
+      if (matchedKeyword) {
+        result = {
+          id: id("test"),
+          ragId,
+          question,
+          citedDocumentIds: [],
+          confidence: "low",
+          conflictFound: false,
+          escalationTriggered: true,
+          testedAt: nowIso(),
+        };
+      } else if (docMatches.length > 0) {
+        result = {
+          id: id("test"),
+          ragId,
+          question,
+          answer: `Based on "${docMatches[0].name}": please refer to that document for the full procedure. (Prototype note: a real deployment would generate a grounded answer from the document text here.)`,
+          citedDocumentIds: docMatches.map((d) => d.id),
+          confidence: docMatches.length > 1 ? "medium" : "high",
+          conflictFound: docMatches.length > 1,
+          escalationTriggered: false,
+          testedAt: nowIso(),
+        };
+      } else {
+        result = {
+          id: id("test"),
+          ragId,
+          question,
+          citedDocumentIds: [],
+          confidence: "low",
+          conflictFound: false,
+          escalationTriggered: true,
+          testedAt: nowIso(),
+        };
+      }
+      created = result;
+      return { ...s, ragTestResults: [result, ...s.ragTestResults] };
+    });
+    return created as unknown as RagTestResult;
+  }, []);
+
+  const setTestFeedback = useCallback((resultId: string, feedback: TestFeedback) => {
+    setState((s) => ({ ...s, ragTestResults: s.ragTestResults.map((r) => (r.id === resultId ? { ...r, feedback } : r)) }));
+  }, []);
+
   const createBooking = useCallback((b: Omit<Booking, "id" | "orgId">) => {
-    setState((s) => ({ ...s, bookings: [...s.bookings, { ...b, id: id("bk"), orgId: ORG_ID }] }));
+    setState((s) => {
+      const actingUser = s.users.find((u) => u.id === s.currentUserId);
+      return { ...s, bookings: [...s.bookings, { ...b, id: id("bk"), orgId: actingUser?.orgId ?? ORG_ID }] };
+    });
   }, []);
 
   const toggle2FA = useCallback((userId: string) => {
@@ -413,32 +582,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, onboardingVideos: [...s.onboardingVideos, { ...v, id: id("v"), order: s.onboardingVideos.length + 1 }] }));
   }, []);
 
-  const askRag = useCallback((ragId: string, userId: string, question: string) => {
+  const askRag = useCallback((ragId: string, userId: string, question: string, askedViaVoice?: boolean) => {
     let created: RagQuestion | null = null;
     setState((s) => {
       const rag = s.rags.find((r) => r.id === ragId);
+      const askingUser = s.users.find((u) => u.id === userId);
+      const orgId = askingUser?.orgId ?? ORG_ID;
       const lowerQuestion = question.toLowerCase();
       const matchedKeyword = rag?.alertKeywords.find((k) => k.enabled && lowerQuestion.includes(k.keyword.toLowerCase()));
 
       if (matchedKeyword) {
-        const newQuestion: RagQuestion = { id: id("q"), ragId, userId, text: question, status: "escalated", askedAt: nowIso() };
+        const newQuestion: RagQuestion = { id: id("q"), ragId, userId, text: question, status: "escalated", askedAt: nowIso(), askedViaVoice };
         const assignment = s.ragAssignments.find((a) => a.ragId === ragId && a.userId === userId);
         const ownerId = assignment?.alertOwnerId ?? "u-admin";
         const newCase: AlertCase = {
           id: id("case"),
-          orgId: ORG_ID,
+          orgId,
           ragId,
           userId,
           ownerId,
           keyword: matchedKeyword.keyword,
           questionId: newQuestion.id,
           status: "open",
+          severity: "high",
+          participantIds: [],
           createdAt: nowIso(),
         };
         const newMessage: AlertCaseMessage = { id: id("acm"), caseId: newCase.id, senderId: userId, text: question, sentAt: nowIso() };
         const newAlert: DashboardAlert = {
           id: id("al"),
-          orgId: ORG_ID,
+          orgId,
           title: `Keyword "${matchedKeyword.keyword}" flagged in ${rag?.name ?? "a RAG"}`,
           detail: `"${question}" - opened as an alert case for review.`,
           severity: "high",
@@ -463,7 +636,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       );
 
       if (priorMatch) {
-        created = { ...priorMatch, id: id("q"), userId, text: question, askedAt: nowIso() };
+        created = { ...priorMatch, id: id("q"), userId, text: question, askedAt: nowIso(), askedViaVoice };
         return { ...s, ragQuestions: [created, ...s.ragQuestions] };
       }
 
@@ -477,14 +650,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           answer: `Based on "${docMatch.name}" in this RAG: please refer to that document for the full procedure. (Prototype note: a real deployment would generate a grounded answer from the document text here.)`,
           status: "answered",
           askedAt: nowIso(),
+          askedViaVoice,
         };
         return { ...s, ragQuestions: [created, ...s.ragQuestions] };
       }
 
-      created = { id: id("q"), ragId, userId, text: question, status: "pending", askedAt: nowIso() };
+      created = { id: id("q"), ragId, userId, text: question, status: "pending", askedAt: nowIso(), askedViaVoice };
       const newAlert: DashboardAlert = {
         id: id("al"),
-        orgId: ORG_ID,
+        orgId,
         title: "New question the RAG could not answer",
         detail: `"${question}" - escalated to your organisation for review.`,
         severity: "medium",
@@ -509,6 +683,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  const createGroupConversation = useCallback((name: string, memberIds: string[], creatorId: string) => {
+    const convId = id("group");
+    const participantIds = [...new Set([creatorId, ...memberIds])];
+    setState((s) => ({
+      ...s,
+      conversations: [...s.conversations, { id: convId, participantIds, label: name, isGroup: true }],
+    }));
+    return convId;
+  }, []);
+
   const markAlertRead = useCallback((alertId: string) => {
     setState((s) => ({ ...s, dashboardAlerts: s.dashboardAlerts.map((a) => (a.id === alertId ? { ...a, read: true } : a)) }));
   }, []);
@@ -525,6 +709,163 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ...s,
       alertCases: s.alertCases.map((c) => (c.id === caseId ? { ...c, status: "closed", closedAt: nowIso(), closedBy } : c)),
     }));
+  }, []);
+
+  const addAlertParticipant = useCallback((caseId: string, userId: string) => {
+    setState((s) => ({
+      ...s,
+      alertCases: s.alertCases.map((c) =>
+        c.id === caseId && !c.participantIds.includes(userId) ? { ...c, participantIds: [...c.participantIds, userId] } : c
+      ),
+    }));
+  }, []);
+
+  const addAlertTask = useCallback((caseId: string, assigneeId: string, text: string) => {
+    setState((s) => ({
+      ...s,
+      alertTasks: [...s.alertTasks, { id: id("task"), caseId, assigneeId, text, done: false, createdAt: nowIso() }],
+    }));
+  }, []);
+
+  const toggleAlertTask = useCallback((taskId: string) => {
+    setState((s) => ({ ...s, alertTasks: s.alertTasks.map((t) => (t.id === taskId ? { ...t, done: !t.done } : t)) }));
+  }, []);
+
+  const convertAlertToIncident = useCallback((caseId: string, investigatorId: string) => {
+    let created: Incident | null = null;
+    setState((s) => {
+      const alertCase = s.alertCases.find((c) => c.id === caseId);
+      if (!alertCase) return s;
+      const newIncident: Incident = {
+        id: id("inc"),
+        orgId: alertCase.orgId,
+        alertCaseId: caseId,
+        ragId: alertCase.ragId,
+        subjectUserId: alertCase.userId,
+        investigatorId,
+        severity: alertCase.severity,
+        status: "open",
+        openedAt: nowIso(),
+      };
+      created = newIncident;
+      return {
+        ...s,
+        incidents: [newIncident, ...s.incidents],
+        alertCases: s.alertCases.map((c) => (c.id === caseId ? { ...c, incidentId: newIncident.id } : c)),
+      };
+    });
+    return created as unknown as Incident;
+  }, []);
+
+  const closeIncident = useCallback((incidentId: string, findings: string) => {
+    setState((s) => ({
+      ...s,
+      incidents: s.incidents.map((i) => (i.id === incidentId ? { ...i, status: "closed", findings, closedAt: nowIso() } : i)),
+    }));
+  }, []);
+
+  const flagQuestionAsAlert = useCallback((questionId: string, raisedByUserId: string, note?: string) => {
+    setState((s) => {
+      const question = s.ragQuestions.find((q) => q.id === questionId);
+      if (!question) return s;
+      const assignment = s.ragAssignments.find((a) => a.ragId === question.ragId && a.userId === question.userId);
+      const askingUser = s.users.find((u) => u.id === question.userId);
+      const newCase: AlertCase = {
+        id: id("case"),
+        orgId: askingUser?.orgId ?? ORG_ID,
+        ragId: question.ragId,
+        userId: question.userId,
+        ownerId: assignment?.alertOwnerId ?? "u-admin",
+        keyword: "(manually flagged)",
+        questionId,
+        status: "open",
+        severity: "medium",
+        participantIds: raisedByUserId !== question.userId ? [raisedByUserId] : [],
+        createdAt: nowIso(),
+      };
+      const newMessage: AlertCaseMessage = {
+        id: id("acm"),
+        caseId: newCase.id,
+        senderId: raisedByUserId,
+        text: note?.trim() || `Flagged this answer for review: "${question.text}"`,
+        sentAt: nowIso(),
+      };
+      return { ...s, alertCases: [newCase, ...s.alertCases], alertCaseMessages: [...s.alertCaseMessages, newMessage] };
+    });
+  }, []);
+
+  const askInternalToJoin = useCallback((caseId: string) => {
+    setState((s) => ({
+      ...s,
+      alertCases: s.alertCases.map((c) =>
+        c.id === caseId && !c.participantIds.includes("u-safeiq-internal")
+          ? { ...c, participantIds: [...c.participantIds, "u-safeiq-internal"] }
+          : c
+      ),
+      alertCaseMessages: [
+        ...s.alertCaseMessages,
+        { id: id("acm"), caseId, senderId: "u-safeiq-internal", text: "SafeIQ Internal has been asked to join this alert and will review shortly.", sentAt: nowIso() },
+      ],
+    }));
+  }, []);
+
+  const triggerEmergency = useCallback((userId: string, trigger: EmergencyTrigger, nominatedContact: string) => {
+    setState((s) => {
+      const user = s.users.find((u) => u.id === userId);
+      const gps = mockGps();
+      const newEvent: EmergencyEvent = {
+        id: id("em"),
+        orgId: user?.orgId ?? ORG_ID,
+        userId,
+        trigger,
+        gpsLat: gps.lat,
+        gpsLng: gps.lng,
+        nominatedContact,
+        status: "new",
+        triggeredAt: nowIso(),
+      };
+      return { ...s, emergencyEvents: [newEvent, ...s.emergencyEvents] };
+    });
+  }, []);
+
+  const resolveEmergency = useCallback((eventId: string, resolution: "satisfied" | "escalated") => {
+    setState((s) => {
+      const event = s.emergencyEvents.find((e) => e.id === eventId);
+      if (!event) return s;
+      if (resolution === "satisfied") {
+        return {
+          ...s,
+          emergencyEvents: s.emergencyEvents.map((e) => (e.id === eventId ? { ...e, status: "satisfied", resolvedAt: nowIso() } : e)),
+        };
+      }
+      const newCase: AlertCase = {
+        id: id("case"),
+        orgId: event.orgId,
+        ragId: "",
+        userId: event.userId,
+        ownerId: "u-admin",
+        keyword: "(emergency escalation)",
+        status: "open",
+        severity: "critical",
+        participantIds: [],
+        createdAt: nowIso(),
+      };
+      const newMessage: AlertCaseMessage = {
+        id: id("acm"),
+        caseId: newCase.id,
+        senderId: event.userId,
+        text: `Emergency (${event.trigger === "safe_word" ? "Emergency Safe Word" : "siren"}) escalated for follow-up.`,
+        sentAt: nowIso(),
+      };
+      return {
+        ...s,
+        emergencyEvents: s.emergencyEvents.map((e) =>
+          e.id === eventId ? { ...e, status: "escalated", resolvedAt: nowIso(), escalatedAlertCaseId: newCase.id } : e
+        ),
+        alertCases: [newCase, ...s.alertCases],
+        alertCaseMessages: [...s.alertCaseMessages, newMessage],
+      };
+    });
   }, []);
 
   const value: AppContextValue = {
@@ -546,12 +887,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTeamRole,
     updateOrganisation,
     createRag,
+    publishRag,
     addDocumentToRag,
+    updateRagDocumentMetadata,
     toggleAlertKeyword,
     addAlertKeyword,
     removeAlertKeyword,
+    setRagEscalationNote,
     answerQuestion,
     assignRagToUser,
+    assignRagToOrg,
+    addRagTestResult,
+    setTestFeedback,
     createBooking,
     toggle2FA,
     toggleIPLock,
@@ -560,9 +907,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     activeRagByUser,
     setActiveRagForUser,
     sendChatMessage,
+    createGroupConversation,
     markAlertRead,
     sendAlertCaseMessage,
     closeAlertCase,
+    addAlertParticipant,
+    addAlertTask,
+    toggleAlertTask,
+    convertAlertToIncident,
+    closeIncident,
+    flagQuestionAsAlert,
+    askInternalToJoin,
+    triggerEmergency,
+    resolveEmergency,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

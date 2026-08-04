@@ -5,22 +5,26 @@ import { AppShell } from "@/components/AppShell";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { useApp } from "@/lib/store";
-import { BrainCircuit, GraduationCap, Bot, ArrowRight, Key, ShieldAlert } from "lucide-react";
+import { BrainCircuit, GraduationCap, Bot, ArrowRight, Key, ShieldAlert, FileSearch, Siren } from "lucide-react";
 
 export default function EmployeeHomePage() {
-  const { currentUser, rags, ragAssignments, ragQuestions, alertCases } = useApp();
+  const { currentUser, rags, ragAssignments, ragQuestions, alertCases, incidents, emergencyEvents } = useApp();
   if (!currentUser) return null;
 
   const myAssignments = ragAssignments.filter((a) => a.userId === currentUser.id);
   const myPending = ragQuestions.filter((q) => q.userId === currentUser.id && q.status !== "answered").length;
   const myAlerts = alertCases.filter(
-    (c) => c.status === "open" && (c.userId === currentUser.id || c.ownerId === currentUser.id)
+    (c) => c.status === "open" && (c.userId === currentUser.id || c.ownerId === currentUser.id || c.participantIds.includes(currentUser.id))
   ).length;
+  const myIncidents = incidents.filter((i) => i.subjectUserId === currentUser.id || i.investigatorId === currentUser.id).length;
+  const myEmergencies = emergencyEvents.filter((e) => e.userId === currentUser.id).length;
 
   const stats = [
     { label: "RAG allocated", value: myAssignments.length, icon: BrainCircuit, tone: "text-brand bg-indigo-50", href: "/employee/my-rags" },
     { label: "Pending responses", value: myPending, icon: GraduationCap, tone: "text-amber-600 bg-amber-50", href: "/employee/my-rags" },
     { label: "Alerts", value: myAlerts, icon: ShieldAlert, tone: "text-red-600 bg-red-50", href: "/employee/alerts" },
+    { label: "Incidents", value: myIncidents, icon: FileSearch, tone: "text-slate-600 bg-slate-100", href: "/employee/incidents" },
+    { label: "Emergencies", value: myEmergencies, icon: Siren, tone: "text-red-600 bg-red-50", href: "/employee/emergencies" },
   ];
 
   return (
@@ -35,7 +39,7 @@ export default function EmployeeHomePage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {stats.map((s) => (
           <Link key={s.label} href={s.href}>
             <Card className="hover:border-brand transition-colors">

@@ -2,29 +2,36 @@
 
 import { useState } from "react";
 import { AlertTriangle, Mic, Siren, KeyRound, Volume2 } from "lucide-react";
+import { useApp } from "@/lib/store";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 
 export function WidgetSafetyPanel() {
+  const { currentUser, triggerEmergency } = useApp();
   const [recording, setRecording] = useState(false);
   const [readAloud, setReadAloud] = useState(false);
   const [safeWord, setSafeWord] = useState("nightingale");
+  const [nominatedContact, setNominatedContact] = useState("Line manager");
   const [flash, setFlash] = useState<string | null>(null);
   const [sirenActive, setSirenActive] = useState(false);
 
   function showFlash(msg: string) {
     setFlash(msg);
-    window.setTimeout(() => setFlash(null), 3200);
+    window.setTimeout(() => setFlash(null), 3400);
   }
 
   function triggerSiren() {
+    if (!currentUser) return;
     setSirenActive(true);
-    showFlash("Simulated: siren sounded, organisation and emergency contacts alerted. No real call was placed.");
+    triggerEmergency(currentUser.id, "siren_button", nominatedContact || "your organisation");
+    showFlash("Simulated: siren sounded, your GPS location and nominated contact were alerted. No real call was placed.");
     window.setTimeout(() => setSirenActive(false), 2500);
   }
 
   function testSafeWord() {
-    showFlash(`Simulated: safe word "${safeWord}" detected 3x - organisation and police contact would be alerted. No real call was placed.`);
+    if (!currentUser) return;
+    triggerEmergency(currentUser.id, "safe_word", nominatedContact || "your organisation");
+    showFlash(`Simulated: "${safeWord}" detected 3x - ${nominatedContact || "your nominated contact"} and your GPS location were sent. No real call was placed.`);
   }
 
   return (
@@ -79,16 +86,17 @@ export function WidgetSafetyPanel() {
             <KeyRound size={15} />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-800">Voice safe word</p>
-            <p className="text-[11px] text-slate-500">Said 3x, alerts police & organisation (simulated)</p>
+            <p className="text-sm font-medium text-slate-800">Emergency Safe Word</p>
+            <p className="text-[11px] text-slate-500">Your device will alert your nominated person or chosen authority along with your GPS location.</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Input value={safeWord} onChange={(e) => setSafeWord(e.target.value)} className="flex-1" />
+        <div className="flex gap-2 mb-2">
+          <Input value={safeWord} onChange={(e) => setSafeWord(e.target.value)} className="flex-1" placeholder="Safe word" />
           <Button size="sm" variant="outline" onClick={testSafeWord}>
             Test
           </Button>
         </div>
+        <Input value={nominatedContact} onChange={(e) => setNominatedContact(e.target.value)} placeholder="Nominated person or authority" className="text-xs" />
       </div>
 
       <button

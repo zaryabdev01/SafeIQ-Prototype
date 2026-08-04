@@ -36,7 +36,11 @@ const employeeNav = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-const internalNav = [{ href: "/internal", label: "Overview", icon: Globe2 }];
+const internalNav = [
+  { href: "/internal", label: "Overview", icon: Globe2 },
+  { href: "/rag", label: "RAG", icon: BrainCircuit },
+  { href: "/alerts", label: "Alerts", icon: ShieldCheck },
+];
 
 export function Sidebar() {
   const pathname = usePathname();

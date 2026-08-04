@@ -1,0 +1,409 @@
+openapi: 3.0.3
+info:
+  title: SafeIQ API
+  version: 0.1.0-draft
+  description: >
+    Draft skeleton for Milestone 1, item 10. Every session is implicitly
+    scoped to one tenant schema (see docs/architecture/multi-tenant-schema.md);
+    no endpoint below takes a tenant ID parameter. The /internal/* paths are
+    the sole exception, operating at the control-plane level.
+servers:
+  - url: https://api.safeiq.io/v1
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/login:
+    post:
+      summary: Sign in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        "200":
+          description: Authenticated session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+        "401":
+          description: Invalid credentials
+
+  /team:
+    get:
+      summary: List team members
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/User" }
+
+  /team/{userId}/role:
+    patch:
+      summary: Change a team member's role
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [teamRole]
+              properties:
+                teamRole: { $ref: "#/components/schemas/TeamRole" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+
+  /rags:
+    get:
+      summary: List RAG systems in this organisation
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Rag" }
+    post:
+      summary: Create a RAG system
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, accessPassword]
+              properties:
+                name: { type: string }
+                accessPassword: { type: string, format: password }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rag" }
+
+  /rags/{ragId}/documents:
+    post:
+      summary: Upload a document (kicks off ingestion pipeline)
+      parameters:
+        - $ref: "#/components/parameters/RagId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "202":
+          description: Accepted for ingestion
+
+  /rags/{ragId}/assignments:
+    post:
+      summary: Assign a team member to this RAG
+      parameters:
+        - $ref: "#/components/parameters/RagId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, alertOwnerId]
+              properties:
+                userId: { type: string, format: uuid }
+                alertOwnerId:
+                  type: string
+                  format: uuid
+                  description: Must be a user with teamRole manager, support, or administrator.
+      responses:
+        "201":
+          description: Assigned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RagAssignment" }
+
+  /rags/{ragId}/keywords:
+    get:
+      summary: List alert keywords for this RAG
+      parameters:
+        - $ref: "#/components/parameters/RagId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AlertKeyword" }
+    post:
+      summary: Add an alert keyword
+      parameters:
+        - $ref: "#/components/parameters/RagId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [keyword]
+              properties:
+                keyword: { type: string }
+      responses:
+        "201":
+          description: Created
+
+  /rags/{ragId}/questions:
+    get:
+      summary: Filtered conversation audit for this RAG
+      parameters:
+        - $ref: "#/components/parameters/RagId"
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/QuestionStatus" }
+        - in: query
+          name: user
+          schema: { type: string, format: uuid }
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+        - in: query
+          name: q
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RagQuestion" }
+
+  /rags/{ragId}/ask:
+    post:
+      summary: Ask this RAG a question (used by the floating agent)
+      parameters:
+        - $ref: "#/components/parameters/RagId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+      responses:
+        "200":
+          description: >
+            Either a grounded answer with citations, or an escalation result
+            (plain pending question, or a new/updated alert case if a keyword matched).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AskResult" }
+
+  /alert-cases:
+    get:
+      summary: List alert cases visible to the current user
+      parameters:
+        - in: query
+          name: owner
+          schema: { type: string, enum: [me] }
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/AlertCaseStatus" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AlertCase" }
+
+  /alert-cases/{caseId}/messages:
+    post:
+      summary: Reply on an alert case
+      parameters:
+        - in: path
+          name: caseId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+      responses:
+        "201":
+          description: Message added
+
+  /alert-cases/{caseId}/close:
+    post:
+      summary: Close an alert case (owner only)
+      parameters:
+        - in: path
+          name: caseId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Closed
+
+  /internal/rags:
+    get:
+      summary: RAGs across every organisation (SafeIQ Internal only)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Rag" }
+
+  /internal/alert-cases:
+    get:
+      summary: Alert cases across every organisation (SafeIQ Internal only)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AlertCase" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  parameters:
+    UserId:
+      in: path
+      name: userId
+      required: true
+      schema: { type: string, format: uuid }
+    RagId:
+      in: path
+      name: ragId
+      required: true
+      schema: { type: string, format: uuid }
+
+  schemas:
+    TeamRole:
+      type: string
+      enum: [employee, manager, support, administrator]
+
+    QuestionStatus:
+      type: string
+      enum: [answered, pending, escalated]
+
+    AlertCaseStatus:
+      type: string
+      enum: [open, closed]
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [organisation, employee, internal] }
+        teamRole: { $ref: "#/components/schemas/TeamRole" }
+        jobTitle: { type: string }
+
+    Rag:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+        documentCount: { type: integer }
+        assignedUserCount: { type: integer }
+
+    RagAssignment:
+      type: object
+      properties:
+        userId: { type: string, format: uuid }
+        ragId: { type: string, format: uuid }
+        accessCode: { type: string }
+        alertOwnerId: { type: string, format: uuid }
+
+    AlertKeyword:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        keyword: { type: string }
+        enabled: { type: boolean }
+
+    RagQuestion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        text: { type: string }
+        answer: { type: string, nullable: true }
+        status: { $ref: "#/components/schemas/QuestionStatus" }
+        citations:
+          type: array
+          items:
+            type: object
+            properties:
+              documentId: { type: string, format: uuid }
+              version: { type: integer }
+        askedAt: { type: string, format: date-time }
+
+    AskResult:
+      type: object
+      properties:
+        question: { $ref: "#/components/schemas/RagQuestion" }
+        alertCaseId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Present if this question matched an alert keyword.
+
+    AlertCase:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        ragId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        ownerId: { type: string, format: uuid }
+        keyword: { type: string }
+        status: { $ref: "#/components/schemas/AlertCaseStatus" }
+        createdAt: { type: string, format: date-time }
+        closedAt: { type: string, format: date-time, nullable: true }

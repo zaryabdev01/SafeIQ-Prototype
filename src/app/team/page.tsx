@@ -27,11 +27,14 @@ const statusTone: Record<InviteStatus, "amber" | "green" | "slate"> = {
 };
 
 export default function TeamPage() {
-  const { users, invites, createInvite, resendInvite, cancelInvite, ragAssignments, setTeamRole } = useApp();
+  const { currentUser, users, invites: allInvites, createInvite, resendInvite, cancelInvite, ragAssignments: allRagAssignments, setTeamRole } = useApp();
   const [email, setEmail] = useState("");
   const [copied, setCopied] = useState("");
 
-  const employees = users.filter((u) => u.role === "employee");
+  const employees = users.filter((u) => u.role === "employee" && u.orgId === currentUser?.orgId);
+  const invites = allInvites.filter((i) => i.orgId === currentUser?.orgId);
+  const employeeIds = new Set(employees.map((e) => e.id));
+  const ragAssignments = allRagAssignments.filter((a) => employeeIds.has(a.userId));
 
   function sendInvite() {
     if (!email.trim()) return;

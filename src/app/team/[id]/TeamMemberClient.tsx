@@ -51,7 +51,7 @@ export function TeamMemberClient({ userId }: { userId: string }) {
   const [justAssignedCode, setJustAssignedCode] = useState<string | null>(null);
 
   const assignments = useMemo(() => ragAssignments.filter((a) => a.userId === userId), [ragAssignments, userId]);
-  const availableRags = rags.filter((r) => !assignments.some((a) => a.ragId === r.id));
+  const availableRags = rags.filter((r) => r.orgId === user?.orgId && !assignments.some((a) => a.ragId === r.id));
   const notes = notesByUser[userId] ?? [];
   const rules = personAlertsByUser[userId] ?? [];
   const flaggedCases = useMemo(
@@ -59,7 +59,7 @@ export function TeamMemberClient({ userId }: { userId: string }) {
     [alertCases, userId]
   );
   const eligibleOwners = users.filter(
-    (u) => u.role === "employee" && u.id !== userId && u.teamRole && u.teamRole !== "employee"
+    (u) => u.role === "employee" && u.orgId === user?.orgId && u.id !== userId && u.teamRole && u.teamRole !== "employee"
   );
   const lastLogin = [...loginHistory].filter((l) => l.userId === userId).sort((a, b) => (a.loginAt < b.loginAt ? 1 : -1))[0];
 

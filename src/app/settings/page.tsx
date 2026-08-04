@@ -21,10 +21,12 @@ export default function SettingsPage() {
   const [orgSector, setOrgSector] = useState(org?.sector ?? SECTORS[0]);
   const [saved, setSaved] = useState(false);
 
-  const historyRows = useMemo(
-    () => [...loginHistory].filter((l) => isOrg || l.userId === currentUser?.id).sort((a, b) => (a.loginAt < b.loginAt ? 1 : -1)),
-    [loginHistory, isOrg, currentUser]
-  );
+  const historyRows = useMemo(() => {
+    const sameOrgUserIds = new Set(users.filter((u) => u.orgId === currentUser?.orgId).map((u) => u.id));
+    return [...loginHistory]
+      .filter((l) => (isOrg ? sameOrgUserIds.has(l.userId) : l.userId === currentUser?.id))
+      .sort((a, b) => (a.loginAt < b.loginAt ? 1 : -1));
+  }, [loginHistory, isOrg, currentUser, users]);
 
   function userName(id: string) {
     return users.find((u) => u.id === id)?.name ?? "Unknown";

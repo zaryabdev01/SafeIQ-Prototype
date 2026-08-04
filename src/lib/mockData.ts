@@ -1,11 +1,14 @@
 import type {
   AlertCase,
   AlertCaseMessage,
+  AlertTask,
   AppUser,
   Booking,
   Conversation,
   ChatMessage,
   DashboardAlert,
+  EmergencyEvent,
+  Incident,
   Invite,
   LoginHistoryEntry,
   OnboardingVideo,
@@ -13,15 +16,24 @@ import type {
   Rag,
   RagAssignment,
   RagQuestion,
+  RagTestResult,
 } from "./types";
 
 export const ORG_ID = "org-bright-care";
+export const ORG2_ID = "org-larkfield";
+export const INTERNAL_ORG_ID = "safeiq-internal";
 
 export const organisations: Organisation[] = [
   {
     id: ORG_ID,
     name: "Bright Care Homes Ltd",
     sector: "Health & Social Care",
+    kycVerified: true,
+  },
+  {
+    id: ORG2_ID,
+    name: "Larkfield Fostering Agency",
+    sector: "Fostering & Adoption",
     kycVerified: true,
   },
 ];
@@ -40,6 +52,7 @@ export const users: AppUser[] = [
     twoFactorEnabled: true,
     ipLockEnabled: false,
     allowedContacts: ["u-aisha", "u-tom", "u-priya", "u-daniel"],
+    directSignUp: true,
     createdAt: "2026-01-12T09:00:00Z",
   },
   {
@@ -111,7 +124,7 @@ export const users: AppUser[] = [
     name: "Jordan Reyes",
     email: "jordan.reyes@safeiq.io",
     role: "internal",
-    orgId: ORG_ID,
+    orgId: INTERNAL_ORG_ID,
     jobTitle: "SafeIQ Platform Support",
     avatarColor: "#0f172a",
     country: "United Kingdom",
@@ -119,7 +132,40 @@ export const users: AppUser[] = [
     twoFactorEnabled: true,
     ipLockEnabled: false,
     allowedContacts: [],
+    directSignUp: true,
     createdAt: "2026-01-01T09:00:00Z",
+  },
+  {
+    id: "u-sam",
+    name: "Sam Okafor",
+    email: "sam.okafor@larkfield.org.uk",
+    role: "organisation",
+    orgId: ORG2_ID,
+    jobTitle: "Registered Manager",
+    avatarColor: "#7c3aed",
+    country: "United Kingdom",
+    language: "English",
+    twoFactorEnabled: true,
+    ipLockEnabled: false,
+    allowedContacts: ["u-ellie"],
+    directSignUp: true,
+    createdAt: "2026-06-01T09:00:00Z",
+  },
+  {
+    id: "u-ellie",
+    name: "Ellie Novak",
+    email: "ellie.novak@larkfield.org.uk",
+    role: "employee",
+    teamRole: "employee",
+    orgId: ORG2_ID,
+    jobTitle: "Supervising Social Worker",
+    avatarColor: "#059669",
+    country: "United Kingdom",
+    language: "English",
+    twoFactorEnabled: false,
+    ipLockEnabled: false,
+    allowedContacts: ["u-sam"],
+    createdAt: "2026-06-10T09:00:00Z",
   },
 ];
 
@@ -161,6 +207,10 @@ export const rags: Rag[] = [
     createdAt: "2026-02-10T09:00:00Z",
     createdBy: "u-admin",
     colorTag: "#4f46e5",
+    category: "Safeguarding",
+    description: "Approved safeguarding policy, reporting procedure, and lone-working guidance for all care staff.",
+    status: "published",
+    escalationNote: "Notify the on-call manager immediately and log a safeguarding concern form within 1 hour.",
     documents: [
       {
         id: "doc-1",
@@ -168,6 +218,14 @@ export const rags: Rag[] = [
         sizeKb: 842,
         addedBy: "Morgan Ellis",
         addedAt: "2026-02-10T09:10:00Z",
+        contentType: "Policy",
+        description: "Organisation-wide safeguarding adults policy, covering disclosure, reporting, and escalation.",
+        appliesTo: "All teams, all locations",
+        accessLevel: "everyone",
+        effectiveDate: "2026-02-10",
+        reviewDate: "2027-02-10",
+        owner: "Morgan Ellis",
+        approvalStatus: "approved",
         versions: [
           { version: 1, uploadedAt: "2026-02-10T09:10:00Z", uploadedBy: "Morgan Ellis", note: "Initial upload" },
           { version: 2, uploadedAt: "2026-05-01T11:00:00Z", uploadedBy: "Morgan Ellis", note: "Annual review update" },
@@ -180,6 +238,14 @@ export const rags: Rag[] = [
         sizeKb: 210,
         addedBy: "Morgan Ellis",
         addedAt: "2026-07-15T13:22:00Z",
+        contentType: "Procedure",
+        description: "Step-by-step flowchart for reporting a safeguarding concern.",
+        appliesTo: "All teams, all locations",
+        accessLevel: "everyone",
+        effectiveDate: "2026-07-15",
+        reviewDate: "2026-08-10",
+        owner: "Morgan Ellis",
+        approvalStatus: "approved",
         versions: [{ version: 1, uploadedAt: "2026-07-15T13:22:00Z", uploadedBy: "Morgan Ellis", note: "Initial upload" }],
       },
     ],
@@ -199,6 +265,10 @@ export const rags: Rag[] = [
     createdAt: "2026-03-01T09:00:00Z",
     createdBy: "u-admin",
     colorTag: "#0d9488",
+    category: "Policy",
+    description: "Manual handling, equipment safety, and COSHH guidance for on-site and domiciliary staff.",
+    status: "published",
+    escalationNote: "Raise a maintenance ticket and notify the site manager the same day.",
     documents: [
       {
         id: "doc-3",
@@ -206,6 +276,14 @@ export const rags: Rag[] = [
         sizeKb: 512,
         addedBy: "Morgan Ellis",
         addedAt: "2026-03-01T09:15:00Z",
+        contentType: "Guidance",
+        description: "Safe manual handling techniques for care staff.",
+        appliesTo: "Care staff, all locations",
+        accessLevel: "everyone",
+        effectiveDate: "2026-03-01",
+        reviewDate: "2027-03-01",
+        owner: "Morgan Ellis",
+        approvalStatus: "approved",
         versions: [{ version: 1, uploadedAt: "2026-03-01T09:15:00Z", uploadedBy: "Morgan Ellis", note: "Initial upload" }],
       },
       {
@@ -214,6 +292,14 @@ export const rags: Rag[] = [
         sizeKb: 96,
         addedBy: "Morgan Ellis",
         addedAt: "2026-06-02T10:00:00Z",
+        contentType: "Regulation",
+        description: "Register of hazardous substances and control measures.",
+        appliesTo: "Facilities team",
+        accessLevel: "managers",
+        effectiveDate: "2026-06-02",
+        reviewDate: "2026-08-05",
+        owner: "Morgan Ellis",
+        approvalStatus: "approved",
         versions: [
           { version: 1, uploadedAt: "2026-06-02T10:00:00Z", uploadedBy: "Morgan Ellis", note: "Initial upload" },
           { version: 2, uploadedAt: "2026-07-01T10:00:00Z", uploadedBy: "Morgan Ellis", note: "Added new cleaning products" },
@@ -235,6 +321,10 @@ export const rags: Rag[] = [
     createdAt: "2026-04-10T09:00:00Z",
     createdBy: "u-admin",
     colorTag: "#be185d",
+    category: "Home visits",
+    description: "Individual care plan templates and guidance for Ward A residents.",
+    status: "published",
+    escalationNote: "Notify the family liaison lead before responding to any family query.",
     documents: [
       {
         id: "doc-5",
@@ -242,6 +332,14 @@ export const rags: Rag[] = [
         sizeKb: 64,
         addedBy: "Morgan Ellis",
         addedAt: "2026-04-10T09:20:00Z",
+        contentType: "Template",
+        description: "Standard care plan template for new residents.",
+        appliesTo: "Ward A",
+        accessLevel: "everyone",
+        effectiveDate: "2026-04-10",
+        reviewDate: "2027-04-10",
+        owner: "Morgan Ellis",
+        approvalStatus: "approved",
         versions: [{ version: 1, uploadedAt: "2026-04-10T09:20:00Z", uploadedBy: "Morgan Ellis", note: "Initial upload" }],
       },
     ],
@@ -370,7 +468,7 @@ export const onboardingVideos: OnboardingVideo[] = [
   { id: "v-5", title: "Using the AI agent widget", description: "How the floating AI agent works for you, including switching between assigned RAGs.", thumbnailGradient: "from-sky-500 to-blue-600", audience: "all", order: 5, durationSeconds: 176 },
   { id: "v-6", title: "Your first day as an employee", description: "What to expect: signing in, accepting your invite, and finding your assigned RAGs.", thumbnailGradient: "from-emerald-500 to-teal-600", audience: "employee", order: 6, durationSeconds: 118 },
   { id: "v-7", title: "Switching between RAGs", description: "How to use your unique access code to switch the AI agent onto a different RAG.", thumbnailGradient: "from-fuchsia-500 to-purple-600", audience: "employee", order: 7, durationSeconds: 95 },
-  { id: "v-8", title: "Safety features overview", description: "Lock-screen audio recording, the emergency siren, and the voice safe word - what they do and when to use them.", thumbnailGradient: "from-red-500 to-rose-600", audience: "employee", order: 8, durationSeconds: 210 },
+  { id: "v-8", title: "Safety features overview", description: "Lock-screen audio recording, the emergency siren, and the Emergency Safe Word - what they do and when to use them.", thumbnailGradient: "from-red-500 to-rose-600", audience: "employee", order: 8, durationSeconds: 210 },
   { id: "v-9", title: "Booking time in the calendar", description: "How organisations and employees can book check-ins linked to a specific RAG.", thumbnailGradient: "from-cyan-500 to-teal-600", audience: "all", order: 9, durationSeconds: 88 },
 ];
 
@@ -414,6 +512,7 @@ export const loginHistory: LoginHistoryEntry[] = [
   { id: "lh-3", userId: "u-aisha", ip: "81.174.22.44", location: "Leeds, UK", device: "Chrome on Android", loginAt: "2026-07-21T19:58:00Z", logoutAt: "2026-07-22T07:30:00Z" },
   { id: "lh-4", userId: "u-tom", ip: "86.12.90.201", location: "Bradford, UK", device: "Edge on Windows", loginAt: "2026-07-20T07:55:00Z", logoutAt: "2026-07-20T16:10:00Z" },
   { id: "lh-5", userId: "u-admin", ip: "81.174.22.9", location: "Leeds, UK", device: "Chrome on Windows", loginAt: "2026-07-20T08:00:00Z", logoutAt: "2026-07-20T17:45:00Z" },
+  { id: "lh-6", userId: "u-sam", ip: "51.9.44.12", location: "Guildford, UK", device: "Chrome on macOS", loginAt: "2026-07-22T08:30:00Z", logoutAt: "2026-07-22T17:00:00Z" },
 ];
 
 export const conversations: Conversation[] = [
@@ -438,6 +537,8 @@ export const alertCases: AlertCase[] = [
     keyword: "family",
     questionId: "q-4",
     status: "open",
+    severity: "high",
+    participantIds: [],
     createdAt: "2026-07-23T09:05:00Z",
   },
   {
@@ -449,6 +550,8 @@ export const alertCases: AlertCase[] = [
     keyword: "abuse",
     questionId: "q-1",
     status: "closed",
+    severity: "critical",
+    participantIds: [],
     createdAt: "2026-07-21T08:30:00Z",
     closedAt: "2026-07-21T10:15:00Z",
     closedBy: "u-priya",
@@ -483,5 +586,35 @@ export const alertCaseMessages: AlertCaseMessage[] = [
     senderId: "u-priya",
     text: "Reviewed the form, spoke with Aisha directly - handled correctly, no further action needed. Closing this out.",
     sentAt: "2026-07-21T10:15:00Z",
+  },
+];
+
+export const alertTasks: AlertTask[] = [
+  {
+    id: "task-1",
+    caseId: "case-1",
+    assigneeId: "u-daniel",
+    text: "Prepare a written summary of the care plan change for the family call.",
+    done: false,
+    createdAt: "2026-07-23T09:25:00Z",
+  },
+];
+
+export const incidents: Incident[] = [];
+
+export const ragTestResults: RagTestResult[] = [];
+
+export const emergencyEvents: EmergencyEvent[] = [
+  {
+    id: "em-1",
+    orgId: ORG_ID,
+    userId: "u-priya",
+    trigger: "safe_word",
+    gpsLat: 53.8008,
+    gpsLng: -1.5491,
+    nominatedContact: "Morgan Ellis",
+    status: "satisfied",
+    triggeredAt: "2026-07-18T23:10:00Z",
+    resolvedAt: "2026-07-18T23:22:00Z",
   },
 ];
