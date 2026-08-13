@@ -1,0 +1,25 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+# app/db/session.py's `engine` is a module-level singleton, created once at import
+# time and reused by every test. pytest-asyncio's default (a fresh event loop per
+# test function) means every test after the first tries to reuse a connection pool
+# still bound to a *closed* loop, surfacing as a misleading "Postgres not reachable
+# (RuntimeError)" skip that has nothing to do with the database. Pinning both loop
+# scopes to "session" keeps one loop for the whole run, matching the engine's actual
+# lifetime.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# B008: FastAPI's Depends(...)-in-default-argument is the framework's own required idiom, not a bug.
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
