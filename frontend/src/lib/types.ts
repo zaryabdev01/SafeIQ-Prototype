@@ -12,6 +12,8 @@ export type TeamRole = "employee" | "manager" | "support" | "administrator";
 export type Language = "English" | "Welsh" | "Polish" | "Urdu" | "French";
 export type Country = "United Kingdom" | "Ireland" | "France" | "Poland" | "Pakistan";
 
+export type UserStatus = "active" | "archived";
+
 export interface AppUser {
   id: string;
   name: string;
@@ -27,6 +29,12 @@ export interface AppUser {
   ipLockEnabled: boolean;
   allowedContacts: string[]; // user ids this person can reach via the AI agent
   directSignUp?: boolean; // true if they signed up directly rather than via an invite
+  status?: UserStatus; // undefined treated as "active" - only archived members carry an explicit value
+  // Client feedback (17/08/2026, gap-analysis §5): a manager can see alert/action
+  // summaries without seeing raw conversation content - only a Safeguarding Lead
+  // (or the org's Super Admin) can open the full text. Kept as a flag rather than
+  // a new TeamRole value since it's a permission, not a job title.
+  isSafeguardingLead?: boolean;
   createdAt: string;
 }
 
@@ -58,11 +66,27 @@ export interface Note {
 
 export type AlertSeverity = "low" | "medium" | "high" | "critical";
 
+// Client feedback (17/08/2026, gap-analysis §6): every alert rule should carry a
+// scope, provenance, and a change history - display/data-shape only, no real
+// notification/escalation logic runs off these fields.
+export type AlertRuleScope = "employee" | "global";
+export type KeywordScope = "rag" | "global";
+
+export interface AlertRuleChangeLogEntry {
+  changedBy: string;
+  changedAt: string;
+  summary: string;
+}
+
 export interface PersonAlertRule {
   id: string;
   category: string;
   severity: AlertSeverity;
   notifyEmail: string;
+  scope?: AlertRuleScope; // undefined treated as "employee" (pre-existing rules)
+  createdBy?: string;
+  createdAt?: string;
+  changeLog?: AlertRuleChangeLogEntry[];
 }
 
 export interface RagAssignment {
@@ -128,10 +152,39 @@ export interface AlertKeyword {
   id: string;
   keyword: string;
   enabled: boolean;
+  severity?: AlertSeverity; // undefined treated as "medium" (pre-existing keywords)
+  scope?: KeywordScope; // undefined treated as "rag" (pre-existing keywords)
+  createdBy?: string;
+  createdAt?: string;
+  changeLog?: AlertRuleChangeLogEntry[];
 }
 
 export type TestConfidence = "high" | "medium" | "low";
 export type TestFeedback = "correct" | "needs_improvement" | "wrong_source" | "missing_information";
+
+// Client feedback (17/08/2026, gap-analysis §7): a new top-level Global Alert
+// Library, distinct from per-RAG AlertKeyword and per-employee PersonAlertRule.
+// Display/data-shape only - no real notification/escalation logic runs off this.
+export type GlobalAlertRuleStatus = "active" | "suggested" | "rejected";
+
+export interface GlobalAlertRule {
+  id: string;
+  orgId: string;
+  phrase: string;
+  category: string;
+  severity: AlertSeverity;
+  ragScope: "all" | string; // "all", or a specific ragId
+  recipientRoles: TeamRole[];
+  autoCreateAction: boolean;
+  acknowledgementRequired: boolean;
+  status: GlobalAlertRuleStatus;
+  triggeredCount: number;
+  proposedBy?: string;
+  proposedAt?: string;
+  createdBy?: string;
+  createdAt?: string;
+  changeLog?: AlertRuleChangeLogEntry[];
+}
 
 export interface RagTestResult {
   id: string;
@@ -165,6 +218,12 @@ export interface Rag {
 
 export type AlertCaseStatus = "open" | "closed";
 
+// Client feedback (17/08/2026, gap-analysis §5): the client wants the flat
+// "keyword matched -> alert" model shown as its real staged pipeline. Display
+// only - stage is inferred from existing status/participant data, not driven
+// by new detection logic.
+export type AlertStage = "keyword_detected" | "signal_generated" | "context_assessment" | "alert_level_set" | "human_review" | "outcome";
+
 // Raised when a team member's question matches one of a RAG's alert keywords,
 // or is manually flagged from a chat answer. The flagged person and their
 // designated alert owner (a manager/support/administrator) converse on it
@@ -181,6 +240,7 @@ export interface AlertCase {
   severity: AlertSeverity;
   participantIds: string[]; // additional people added to the alert, beyond userId/ownerId
   incidentId?: string; // set once this alert has been turned into an Incident
+  context?: string; // e.g. "Describing their own risk" vs "Reporting a concern about someone else"
   createdAt: string;
   closedAt?: string;
   closedBy?: string;
@@ -200,6 +260,26 @@ export interface AlertTask {
   assigneeId: string;
   text: string;
   done: boolean;
+  createdAt: string;
+}
+
+// Client feedback (17/08/2026, gap-analysis §1/§2/§5/§9): a general-purpose,
+// standalone Actions entity - referenced by both dashboards, the Team Member
+// Profile, and RAG Overview - distinct from AlertTask (which is scoped to one
+// alert case only).
+export type ActionStatus = "open" | "in_progress" | "completed";
+export type ActionPriority = "low" | "medium" | "high" | "urgent";
+
+export interface Action {
+  id: string;
+  orgId: string;
+  ragId?: string;
+  assigneeId: string;
+  title: string;
+  priority: ActionPriority;
+  dueAt?: string; // yyyy-mm-dd
+  status: ActionStatus;
+  sourceAlertCaseId?: string;
   createdAt: string;
 }
 
@@ -252,6 +332,17 @@ export interface DashboardAlert {
 
 export type VideoAudience = "organisation" | "employee" | "all";
 
+// Client feedback (17/08/2026, gap-analysis §3): the "Help & Learning Hub"
+// redesign - a Help Sprint progression system, card status, category
+// taxonomy, and an assignment workflow layered onto the existing (real,
+// backend-integrated) onboarding video CMS. All new fields are additive and
+// optional so the real Milestone 3 backend path is completely unaffected -
+// see frontend/src/app/onboarding/page.tsx's real-mode branch.
+export type HelpCardStatus = "recommended" | "next" | "new" | "completed" | "required";
+export type HelpCategory = "Getting Started" | "Employees" | "Training" | "Reports" | "Account" | "Billing" | "Troubleshooting" | "General";
+export type HelpAudienceType = "org_admin" | "manager" | "employee" | "trainer";
+export type ShareChannel = "email" | "whatsapp" | "messenger" | "inplatform" | "team" | "department" | "location";
+
 export interface OnboardingVideo {
   id: string;
   title: string;
@@ -260,6 +351,23 @@ export interface OnboardingVideo {
   audience: VideoAudience;
   order: number;
   durationSeconds: number;
+  sprintPosition?: number; // 1-9, position in "Your Help Sprint" - undefined means not part of the sprint
+  category?: HelpCategory;
+  isGeneralSupport?: boolean; // true = "General Support" (account/accessibility/contacting org); undefined/false = "Platform Help"
+  userTypes?: HelpAudienceType[]; // undefined treated as all types
+  prerequisiteId?: string; // soft "next recommended" dependency, not a hard lock
+  estimatedMinutes?: number;
+  aiKeywords?: string[];
+  published?: boolean; // undefined treated as true (existing items)
+  requiredForUserId?: string; // set when an admin assigns this item as "Required" to a specific person
+  requiredDueDate?: string; // yyyy-mm-dd
+}
+
+export interface Achievement {
+  id: string;
+  label: string;
+  description: string;
+  icon: string; // emoji, avoids a new asset/icon-set dependency
 }
 
 export interface Booking {
@@ -272,6 +380,8 @@ export interface Booking {
   ragId?: string;
   accessCode?: string;
   notes?: string;
+  meetingLink?: string;
+  cancelled?: boolean;
 }
 
 export interface LoginHistoryEntry {

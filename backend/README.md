@@ -104,6 +104,20 @@ this honestly: notes and alert rules are fully real when signed in for real, whi
 alert words" and "assigned RAG systems" sections show an explicit notice that they're waiting on
 Milestone 5, rather than silently rendering empty mock data that could be mistaken for a bug.
 
+## Client feedback (17/08/2026) - Phase 1a: real login history
+
+Neil's review asked for Settings' "Account login history" to be real instead of mock data, with
+search. `LoginEvent` (`app/models/tenant.py`) is a small tenant table separate from the audit
+ledger by design: ADR-005's ledger only ever stores a `content_hash`, never real PII, so it
+structurally cannot answer "what IP did this user log in from." `POST /auth/login`
+(`app/api/routes/auth.py`) writes a `LoginEvent` row (capturing the request's IP and user-agent) in
+the same transaction as its existing `user.logged_in` audit entry, so the two can never drift out
+of sync. `GET /team/login-history?q=&user_id=&limit=` (`app/api/routes/users.py`, admin-only, same
+`_TEAM_MANAGERS` gate as `/team`) serves it, with `q` matching against name/email. Registered before
+`GET /team/{user_id}` deliberately, since FastAPI matches path templates in registration order and
+the literal `/team/login-history` segment would otherwise be swallowed by that parameterised route.
+Covered by `tests/test_login_history.py`.
+
 ## How multi-tenancy actually works here
 
 Every organisation gets its own real Postgres schema (`tenant_<org_id>`), created at sign-up time

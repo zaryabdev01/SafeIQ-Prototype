@@ -17,6 +17,7 @@ import {
   Home,
   FolderKanban,
   Globe2,
+  ShieldAlert,
 } from "lucide-react";
 
 const orgNav = [
@@ -24,6 +25,7 @@ const orgNav = [
   { href: "/onboarding", label: "Onboarding", icon: GraduationCap },
   { href: "/team", label: "Team", icon: Users },
   { href: "/rag", label: "RAG", icon: BrainCircuit },
+  { href: "/alert-library", label: "Alert Library", icon: ShieldAlert },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

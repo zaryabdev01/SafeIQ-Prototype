@@ -38,6 +38,7 @@ export default function TeamPage() {
     cancelInvite,
     ragAssignments: allRagAssignments,
     setTeamRole,
+    setUserStatus,
   } = useApp();
   const [email, setEmail] = useState("");
   const [copied, setCopied] = useState("");
@@ -52,6 +53,25 @@ export default function TeamPage() {
   const [teamSearch, setTeamSearch] = useState("");
   const [selectedInviteTokens, setSelectedInviteTokens] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  // --- Mock mode: archive status (client feedback, 17/08/2026, gap-analysis §4) ---
+  const [mockTeamSearch, setMockTeamSearch] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
+
+  function toggleEmployeeSelected(userId: string) {
+    setSelectedEmployeeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
+
+  function bulkSetStatus(status: "active" | "archived") {
+    for (const userId of selectedEmployeeIds) setUserStatus(userId, status);
+    setSelectedEmployeeIds(new Set());
+  }
 
   const refreshReal = useCallback(async () => {
     setRealLoading(true);
@@ -184,6 +204,14 @@ export default function TeamPage() {
   const employeeIds = new Set(employees.map((e) => e.id));
   const ragAssignments = allRagAssignments.filter((a) => employeeIds.has(a.userId));
 
+  const archivedCount = employees.filter((u) => u.status === "archived").length;
+  const visibleEmployees = employees.filter((u) => (showArchived ? true : u.status !== "archived"));
+  const filteredEmployees = visibleEmployees.filter((u) => {
+    const q = mockTeamSearch.trim().toLowerCase();
+    if (!q) return true;
+    return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.jobTitle ?? "").toLowerCase().includes(q);
+  });
+
   function sendInvite() {
     if (!email.trim()) return;
     createInvite(email.trim());
@@ -194,7 +222,7 @@ export default function TeamPage() {
     createInvite("Open invite - anyone with this link");
   }
 
-  const memberCount = isRealSession ? realTeam.length : employees.length;
+  const memberCount = isRealSession ? realTeam.length : employees.length - archivedCount;
   const pendingCount = isRealSession ? realInvites.filter((i) => i.status === "pending").length : invites.filter((i) => i.status === "pending").length;
 
   return (
@@ -364,10 +392,45 @@ export default function TeamPage() {
                 />
               </div>
             )}
+            {!isRealSession && (
+              <>
+                <div className="relative w-52">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={mockTeamSearch}
+                    onChange={(e) => setMockTeamSearch(e.target.value)}
+                    placeholder="Search team members"
+                    className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                  />
+                </div>
+                {archivedCount > 0 && (
+                  <button
+                    onClick={() => setShowArchived((v) => !v)}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg border whitespace-nowrap ${showArchived ? "border-brand text-brand bg-brand/5" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}
+                  >
+                    {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
+                  </button>
+                )}
+              </>
+            )}
             <Badge tone="slate">{memberCount}</Badge>
           </div>
         </CardHeader>
-        <div className={`divide-y divide-slate-100 ${isRealSession ? "max-h-[22.5rem] overflow-y-auto" : ""}`}>
+        {!isRealSession && selectedEmployeeIds.size > 0 && (
+          <div className="px-5 py-2.5 bg-brand/5 border-b border-slate-100 flex items-center gap-3">
+            <span className="text-xs text-slate-600">{selectedEmployeeIds.size} selected</span>
+            <Button size="sm" variant="ghost" onClick={() => bulkSetStatus("archived")}>
+              Archive selected
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => bulkSetStatus("active")}>
+              Unarchive selected
+            </Button>
+            <button onClick={() => setSelectedEmployeeIds(new Set())} className="text-xs text-slate-400 hover:text-slate-600 ml-auto">
+              Clear
+            </button>
+          </div>
+        )}
+        <div className="divide-y divide-slate-100 max-h-[22.5rem] overflow-y-auto">
           {isRealSession
             ? filteredRealTeam.map((u) => (
                 <div key={u.id} className="px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors">
@@ -398,10 +461,20 @@ export default function TeamPage() {
                   </Link>
                 </div>
               ))
-            : employees.map((u) => {
+            : filteredEmployees.map((u) => {
                 const codes = ragAssignments.filter((a) => a.userId === u.id);
+                const archived = u.status === "archived";
                 return (
-                  <div key={u.id} className="px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors">
+                  <div
+                    key={u.id}
+                    className={`px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors ${archived ? "opacity-60" : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedEmployeeIds.has(u.id)}
+                      onChange={() => toggleEmployeeSelected(u.id)}
+                      className="shrink-0"
+                    />
                     <Link href={`/team/${u.id}`} className="flex items-center gap-3 flex-1 min-w-0">
                       <Avatar name={u.name} color={u.avatarColor} size={36} />
                       <div className="min-w-0 flex-1">
@@ -411,6 +484,7 @@ export default function TeamPage() {
                         </p>
                       </div>
                     </Link>
+                    {archived && <Badge tone="slate">Archived</Badge>}
                     <Select
                       value={u.teamRole ?? "employee"}
                       onClick={(e) => e.stopPropagation()}
@@ -432,7 +506,7 @@ export default function TeamPage() {
                   </div>
                 );
               })}
-          {(isRealSession ? filteredRealTeam.length === 0 : employees.length === 0) && (
+          {(isRealSession ? filteredRealTeam.length === 0 : filteredEmployees.length === 0) && (
             <p className="px-5 py-6 text-sm text-slate-400 text-center">No team members yet.</p>
           )}
         </div>

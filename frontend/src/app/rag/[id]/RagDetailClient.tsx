@@ -1,19 +1,20 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Select, Textarea, Label } from "@/components/ui/Field";
-import { Badge } from "@/components/ui/Badge";
+import { Badge, severityTone } from "@/components/ui/Badge";
 import { Tabs } from "@/components/ui/Tabs";
 import { Modal } from "@/components/ui/Modal";
 import { useApp } from "@/lib/store";
 import { INTERNAL_ORG_ID } from "@/lib/mockData";
 import { formatDateTime, timeAgo } from "@/lib/format";
 import { AlertCaseThread } from "@/components/AlertCaseThread";
+import { GlobalScopeConfirmModal, RuleHistory, SeverityLegend } from "@/components/AlertRuleGovernance";
 import {
   ArrowLeft,
   UploadCloud,
@@ -36,8 +37,14 @@ import {
   FileWarning,
   Building2,
   Globe2,
+  Users,
+  ListChecks,
+  History as HistoryIcon,
+  ChevronRight,
+  BookOpen,
+  MessageSquare as MessageSquareIcon,
 } from "lucide-react";
-import type { AccessLevel, ApprovalStatus, ContentType, RagDocument, TeamRole, TestConfidence, TestFeedback } from "@/lib/types";
+import type { AccessLevel, AlertSeverity, ApprovalStatus, ContentType, KeywordScope, RagDocument, TeamRole, TestConfidence, TestFeedback } from "@/lib/types";
 
 const TEAM_ROLE_LABEL: Record<TeamRole, string> = {
   employee: "Employee",
@@ -77,6 +84,7 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
     ragQuestions,
     alertCases,
     ragTestResults,
+    actions: allActions,
     addDocumentToRag,
     updateRagDocumentMetadata,
     toggleAlertKeyword,
@@ -100,6 +108,7 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
   const [reviewDocId, setReviewDocId] = useState<string | null>(null);
   const [libTypeFilter, setLibTypeFilter] = useState("");
   const [libStatusFilter, setLibStatusFilter] = useState("");
+  const [historyDocId, setHistoryDocId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // People & access tab state
@@ -112,16 +121,21 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
 
   // Risk rules tab state
   const [newKeyword, setNewKeyword] = useState("");
+  const [keywordSeverity, setKeywordSeverity] = useState<AlertSeverity>("medium");
+  const [keywordScope, setKeywordScope] = useState<KeywordScope>("rag");
+  const [confirmingGlobalKeyword, setConfirmingGlobalKeyword] = useState(false);
   const [escalationDraft, setEscalationDraft] = useState(rag?.escalationNote ?? "");
   const [escalationSaved, setEscalationSaved] = useState(false);
 
-  // Activity tab state
+  // Communications tab state
   const [qSubTab, setQSubTab] = useState<"pending" | "answered">("pending");
   const [replyFor, setReplyFor] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
+  const [replyAddToKnowledge, setReplyAddToKnowledge] = useState(false);
   const [qSearch, setQSearch] = useState("");
   const [qMemberFilter, setQMemberFilter] = useState("");
   const [qDateFilter, setQDateFilter] = useState("");
+  const [qRiskFilter, setQRiskFilter] = useState("");
 
   // Test tab state
   const [testQuestion, setTestQuestion] = useState("");
@@ -137,6 +151,7 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
     () => (rag ? ragTestResults.filter((t) => t.ragId === rag.id).sort((a, b) => (a.testedAt < b.testedAt ? 1 : -1)) : []),
     [ragTestResults, rag]
   );
+  const ragActions = useMemo(() => (rag ? allActions.filter((a) => a.ragId === rag.id) : []), [allActions, rag]);
   const isInternalRag = rag?.orgId === INTERNAL_ORG_ID;
   const employees = users.filter((u) => u.role === "employee" && u.orgId === rag?.orgId);
   const availableEmployees = employees.filter((u) => !assignments.some((a) => a.userId === u.id));
@@ -192,15 +207,38 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
 
   function submitReply(questionId: string) {
     if (!replyText.trim()) return;
+    const question = questions.find((q) => q.id === questionId);
     answerQuestion(questionId, replyText.trim());
+    if (replyAddToKnowledge && question) {
+      // Lands in the same "content requiring review" queue as any other upload -
+      // an answer doesn't join the knowledge base until someone confirms its metadata.
+      addDocumentToRag(rag!.id, {
+        name: question.text.slice(0, 60),
+        sizeKb: 4,
+        addedBy: currentUser?.name ?? "Organisation",
+        addedAt: new Date().toISOString(),
+        note: `Answer: ${replyText.trim()}`,
+        contentType: "FAQ",
+      });
+    }
     setReplyFor(null);
     setReplyText("");
+    setReplyAddToKnowledge(false);
   }
 
   function submitKeyword() {
     if (!newKeyword.trim()) return;
-    addAlertKeyword(rag!.id, newKeyword.trim());
+    if (keywordScope === "global") {
+      setConfirmingGlobalKeyword(true);
+      return;
+    }
+    createKeyword();
+  }
+
+  function createKeyword() {
+    addAlertKeyword(rag!.id, newKeyword.trim(), keywordSeverity, keywordScope);
     setNewKeyword("");
+    setConfirmingGlobalKeyword(false);
   }
 
   function saveEscalationNote() {
@@ -235,14 +273,38 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
   });
   const reviewingDoc = rag.documents.find((d) => d.id === reviewDocId) ?? null;
 
+  function riskForQuestion(questionId: string) {
+    return ragCases.find((c) => c.questionId === questionId)?.severity;
+  }
+
   const filteredQuestions = questions.filter((q) => {
     if (qSearch.trim() && !q.text.toLowerCase().includes(qSearch.trim().toLowerCase())) return false;
     if (qMemberFilter && q.userId !== qMemberFilter) return false;
     if (qDateFilter && !q.askedAt.startsWith(qDateFilter)) return false;
+    if (qRiskFilter && riskForQuestion(q.id) !== qRiskFilter) return false;
     return true;
   });
   const pendingQs = filteredQuestions.filter((q) => q.status !== "answered").sort((a, b) => (a.askedAt < b.askedAt ? 1 : -1));
   const answeredQs = filteredQuestions.filter((q) => q.status === "answered").sort((a, b) => (a.askedAt < b.askedAt ? 1 : -1));
+
+  const peopleAllocated = assignments.map((a) => {
+    const acts = questions.filter((q) => q.userId === a.userId);
+    const lastActivity = acts.map((q) => q.askedAt).sort().at(-1);
+    return {
+      userId: a.userId,
+      lastActivity,
+      conversations: acts.length,
+      alerts: ragCases.filter((c) => c.userId === a.userId).length,
+      openActions: ragActions.filter((act) => act.assigneeId === a.userId && act.status !== "completed").length,
+    };
+  });
+
+  const systemEvents = [
+    ...rag.documents.map((d) => ({ id: `doc-${d.id}`, text: `${d.addedBy} added "${d.name}" to Knowledge`, at: d.addedAt })),
+    ...rag.alertKeywords.map((k) => ({ id: `kw-${k.id}`, text: `${k.createdBy ?? "Someone"} added risk rule "${k.keyword}"`, at: k.createdAt ?? rag.createdAt })),
+    ...assignments.map((a) => ({ id: `assign-${a.userId}`, text: `${userName(a.userId)} was given access to this RAG`, at: a.assignedAt })),
+    { id: "created", text: `${userName(rag.createdBy)} created this RAG`, at: rag.createdAt },
+  ].sort((x, y) => (x.at < y.at ? 1 : -1));
 
   return (
     <AppShell title={rag.name} subtitle={`${rag.category} · Access password: ${"•".repeat(rag.accessPassword.length)}`}>
@@ -254,32 +316,27 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
         <Tabs
           tabs={[
             { key: "overview", label: "Overview" },
-            { key: "knowledge", label: "Knowledge", count: rag.documents.length },
+            { key: "communications", label: "Communications", count: questions.length },
             { key: "people", label: "People & access", count: assignments.length },
+            { key: "knowledge", label: "Knowledge", count: rag.documents.length },
             { key: "risk", label: "Risk rules", count: rag.alertKeywords.length },
-            { key: "test", label: "Test", count: testResults.length },
-            { key: "activity", label: "Activity", count: questions.length },
+            { key: "settings", label: "Settings & testing", count: testResults.length },
+            { key: "activity", label: "Activity" },
           ]}
           active={tab}
           onChange={setTab}
         />
 
-        {tab === "overview" && (
+        {tab === "overview" && rag.status === "draft" && (
           <CardBody className="space-y-5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Badge tone="indigo">{rag.category}</Badge>
-                <Badge tone={rag.status === "published" ? "green" : "amber"}>{rag.status === "published" ? "Published" : `Draft · ${progressPct}% complete`}</Badge>
+                <Badge tone="amber">Draft · {progressPct}% complete</Badge>
               </div>
-              {rag.status === "draft" ? (
-                <Button size="sm" onClick={() => publishRag(rag.id)} disabled={!hasKnowledge}>
-                  <Check size={13} /> Publish
-                </Button>
-              ) : (
-                <Badge tone="green">
-                  <CheckCircle2 size={12} /> Live for your team
-                </Badge>
-              )}
+              <Button size="sm" onClick={() => publishRag(rag.id)} disabled={!hasKnowledge}>
+                <Check size={13} /> Publish
+              </Button>
             </div>
 
             <div>
@@ -295,13 +352,75 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
                   { label: "Add knowledge", done: hasKnowledge },
                   { label: "Set permissions", done: hasAccess },
                   { label: "Configure escalation", done: hasRisk },
-                  { label: "Test and publish", done: hasTest && rag.status === "published" },
+                  { label: "Test and publish", done: false }, // this checklist only renders while still in draft
                 ].map((s) => (
                   <div key={s.label} className="flex items-center gap-2 text-sm">
                     {s.done ? <CheckCircle2 size={16} className="text-emerald-500" /> : <Circle size={16} className="text-slate-300" />}
                     <span className={s.done ? "text-slate-700" : "text-slate-400"}>{s.label}</span>
                   </div>
                 ))}
+              </div>
+            </div>
+          </CardBody>
+        )}
+
+        {tab === "overview" && rag.status === "published" && (
+          <CardBody className="space-y-5">
+            <div className="flex items-center gap-2">
+              <Badge tone="indigo">{rag.category}</Badge>
+              <Badge tone="green">
+                <CheckCircle2 size={12} /> Live for your team
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              {[
+                { label: "Allocated employees", value: assignments.length, icon: Users, tab: "people" },
+                { label: "Conversations", value: questions.length, icon: MessageSquareIcon, tab: "communications" },
+                { label: "Pending questions", value: questions.filter((q) => q.status !== "answered").length, icon: BellRing, tab: "communications" },
+                { label: "Alerts", value: ragCases.length, icon: ShieldAlert, tab: "communications" },
+                { label: "Open actions", value: ragActions.filter((a) => a.status !== "completed").length, icon: ListChecks, tab: "communications" },
+              ].map((s) => (
+                <button key={s.label} onClick={() => setTab(s.tab)} className="rounded-lg border border-slate-200 px-3 py-3 text-left hover:border-brand transition-colors">
+                  <s.icon size={15} className="text-slate-400 mb-1.5" />
+                  <p className="text-lg font-semibold text-slate-900 leading-none">{s.value}</p>
+                  <p className="text-xs text-slate-500 mt-1">{s.label}</p>
+                </button>
+              ))}
+            </div>
+
+            <div>
+              <Label>People allocated to this RAG</Label>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
+                      <th className="py-2 pr-3 font-medium">Person</th>
+                      <th className="py-2 pr-3 font-medium">Last activity</th>
+                      <th className="py-2 pr-3 font-medium">Conversations</th>
+                      <th className="py-2 pr-3 font-medium">Alerts</th>
+                      <th className="py-2 pr-3 font-medium">Open actions</th>
+                      <th className="py-2 pr-3 font-medium"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {peopleAllocated.map((p) => (
+                      <tr key={p.userId}>
+                        <td className="py-2.5 pr-3 text-slate-800">{userName(p.userId)}</td>
+                        <td className="py-2.5 pr-3 text-slate-500">{p.lastActivity ? timeAgo(p.lastActivity) : "No activity yet"}</td>
+                        <td className="py-2.5 pr-3 text-slate-500">{p.conversations}</td>
+                        <td className="py-2.5 pr-3 text-slate-500">{p.alerts}</td>
+                        <td className="py-2.5 pr-3 text-slate-500">{p.openActions}</td>
+                        <td className="py-2.5 pr-3">
+                          <Link href={`/team/${p.userId}`} className="text-brand text-xs font-medium hover:underline flex items-center gap-0.5">
+                            View profile <ChevronRight size={12} />
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {peopleAllocated.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No one is assigned to this RAG yet.</p>}
               </div>
             </div>
           </CardBody>
@@ -411,33 +530,59 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {libraryDocs.map((d) => (
-                      <tr key={d.id}>
-                        <td className="py-2.5 pr-3">
-                          <div className="flex items-center gap-2">
-                            <FileText size={14} className="text-slate-400 shrink-0" />
-                            <span className="text-slate-800 truncate max-w-[220px]">{d.name}</span>
-                            <Badge tone="slate">v{d.versions.length}</Badge>
-                          </div>
-                        </td>
-                        <td className="py-2.5 pr-3 text-slate-500">{d.contentType}</td>
-                        <td className="py-2.5 pr-3 text-slate-500">{d.appliesTo}</td>
-                        <td className="py-2.5 pr-3">
-                          <Badge tone={APPROVAL_TONE[d.approvalStatus]}>{APPROVAL_LABEL[d.approvalStatus]}</Badge>
-                        </td>
-                        <td className="py-2.5 pr-3 text-slate-500">
-                          {d.reviewDate && new Date(d.reviewDate) < new Date() ? (
-                            <span className="text-red-600 font-medium">{d.reviewDate}</span>
-                          ) : (
-                            d.reviewDate ?? "-"
-                          )}
-                        </td>
-                        <td className="py-2.5 pr-3 text-slate-500 capitalize">{d.accessLevel}</td>
-                        <td className="py-2.5 pr-3">
-                          <button onClick={() => setReviewDocId(d.id)} className="text-brand text-xs font-medium hover:underline">
-                            View
-                          </button>
-                        </td>
-                      </tr>
+                      <Fragment key={d.id}>
+                        <tr>
+                          <td className="py-2.5 pr-3">
+                            <div className="flex items-center gap-2">
+                              <FileText size={14} className="text-slate-400 shrink-0" />
+                              <span className="text-slate-800 truncate max-w-[220px]">{d.name}</span>
+                              <Badge tone="slate">v{d.versions.length}</Badge>
+                            </div>
+                          </td>
+                          <td className="py-2.5 pr-3 text-slate-500">{d.contentType}</td>
+                          <td className="py-2.5 pr-3 text-slate-500">{d.appliesTo}</td>
+                          <td className="py-2.5 pr-3">
+                            <Badge tone={APPROVAL_TONE[d.approvalStatus]}>{APPROVAL_LABEL[d.approvalStatus]}</Badge>
+                          </td>
+                          <td className="py-2.5 pr-3 text-slate-500">
+                            {d.reviewDate && new Date(d.reviewDate) < new Date() ? (
+                              <span className="text-red-600 font-medium">{d.reviewDate}</span>
+                            ) : (
+                              d.reviewDate ?? "-"
+                            )}
+                          </td>
+                          <td className="py-2.5 pr-3 text-slate-500 capitalize">{d.accessLevel}</td>
+                          <td className="py-2.5 pr-3 whitespace-nowrap">
+                            <button onClick={() => setReviewDocId(d.id)} className="text-brand text-xs font-medium hover:underline mr-2">
+                              View
+                            </button>
+                            <button
+                              onClick={() => setHistoryDocId(historyDocId === d.id ? null : d.id)}
+                              className="text-slate-400 text-xs font-medium hover:text-slate-600"
+                            >
+                              History
+                            </button>
+                          </td>
+                        </tr>
+                        {historyDocId === d.id && (
+                          <tr key={`${d.id}-history`}>
+                            <td colSpan={7} className="pb-3">
+                              <div className="rounded-lg bg-slate-50 px-3.5 py-2.5 space-y-1">
+                                {[...d.versions].reverse().map((v) => (
+                                  <div key={v.version} className="flex items-center justify-between gap-2 text-xs text-slate-500">
+                                    <span>
+                                      v{v.version} · {v.note}
+                                    </span>
+                                    <span className="text-slate-400 shrink-0">
+                                      {v.uploadedBy} · {timeAgo(v.uploadedAt)}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -567,31 +712,52 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
 
         {tab === "risk" && (
           <CardBody>
-            <p className="text-xs text-slate-500 mb-4 flex items-center gap-1.5">
+            <p className="text-xs text-slate-500 mb-3 flex items-center gap-1.5">
               <BellRing size={13} /> Any question containing one of these words turns into an alert for the assigned person&apos;s
               alert owner to review.
             </p>
+            <details className="mb-4">
+              <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-700 select-none">What does each severity do?</summary>
+              <div className="pt-2">
+                <SeverityLegend />
+              </div>
+            </details>
             <div className="space-y-2 mb-5">
               {rag.alertKeywords.map((k) => (
-                <div key={k.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3.5 py-2.5">
-                  <span className="text-sm text-slate-800 font-mono">{k.keyword}</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => toggleAlertKeyword(rag.id, k.id)}
-                      className={`w-10 h-6 rounded-full relative transition-colors shrink-0 ${k.enabled ? "bg-brand" : "bg-slate-200"}`}
-                    >
-                      <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${k.enabled ? "left-[18px]" : "left-0.5"}`} />
-                    </button>
-                    <button onClick={() => removeAlertKeyword(rag.id, k.id)} className="text-slate-300 hover:text-red-500">
-                      <Trash2 size={14} />
-                    </button>
+                <div key={k.id} className="rounded-lg border border-slate-200 px-3.5 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-slate-800 font-mono">{k.keyword}</span>
+                    <div className="flex items-center gap-2">
+                      {k.scope && <Badge tone={k.scope === "global" ? "indigo" : "slate"}>{k.scope === "global" ? "Global" : "This RAG only"}</Badge>}
+                      <Badge tone={severityTone(k.severity ?? "medium")}>{k.severity ?? "medium"}</Badge>
+                      <button
+                        onClick={() => toggleAlertKeyword(rag.id, k.id)}
+                        className={`w-10 h-6 rounded-full relative transition-colors shrink-0 ${k.enabled ? "bg-brand" : "bg-slate-200"}`}
+                      >
+                        <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${k.enabled ? "left-[18px]" : "left-0.5"}`} />
+                      </button>
+                      <button onClick={() => removeAlertKeyword(rag.id, k.id)} className="text-slate-300 hover:text-red-500">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
+                  <RuleHistory entries={k.changeLog} />
                 </div>
               ))}
               {rag.alertKeywords.length === 0 && <p className="text-xs text-slate-400 text-center py-4">No alert keywords set yet.</p>}
             </div>
             <div className="flex flex-col sm:flex-row gap-2 mb-6">
               <Input value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)} placeholder="New keyword, e.g. 'self-harm'" className="flex-1" />
+              <Select value={keywordSeverity} onChange={(e) => setKeywordSeverity(e.target.value as AlertSeverity)} className="!w-auto">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </Select>
+              <Select value={keywordScope} onChange={(e) => setKeywordScope(e.target.value as KeywordScope)} className="!w-auto">
+                <option value="rag">This RAG only</option>
+                <option value="global">Organisation-wide (global)</option>
+              </Select>
               <Button onClick={submitKeyword}>
                 <Plus size={14} /> Add
               </Button>
@@ -616,7 +782,7 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
           </CardBody>
         )}
 
-        {tab === "test" && (
+        {tab === "settings" && (
           <CardBody>
             <p className="text-xs text-slate-500 mb-4 flex items-center gap-1.5">
               <FlaskConical size={13} /> Ask an example question before publishing, to see exactly what this RAG would say.
@@ -673,7 +839,7 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
           </CardBody>
         )}
 
-        {tab === "activity" && (
+        {tab === "communications" && (
           <CardBody>
             <div className="flex flex-col sm:flex-row gap-2 mb-4">
               <div className="relative flex-1">
@@ -687,6 +853,13 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
                     {userName(a.userId)}
                   </option>
                 ))}
+              </Select>
+              <Select value={qRiskFilter} onChange={(e) => setQRiskFilter(e.target.value)} className="sm:w-40">
+                <option value="">Any risk level</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
               </Select>
               <Input type="date" value={qDateFilter} onChange={(e) => setQDateFilter(e.target.value)} className="sm:w-44" />
             </div>
@@ -706,41 +879,63 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
               </button>
             </div>
             <div className="space-y-3">
-              {(qSubTab === "pending" ? pendingQs : answeredQs).map((q) => (
-                <div key={q.id} className="rounded-lg border border-slate-200 px-4 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm text-slate-800">{q.text}</p>
-                      <p className="text-xs text-slate-400 mt-1">
-                        {userName(q.userId)} · {timeAgo(q.askedAt)}
-                      </p>
+              {(qSubTab === "pending" ? pendingQs : answeredQs).map((q) => {
+                const risk = riskForQuestion(q.id);
+                return (
+                  <div key={q.id} className="rounded-lg border border-slate-200 px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm text-slate-800">{q.text}</p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          {userName(q.userId)} · {timeAgo(q.askedAt)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {risk && <Badge tone={severityTone(risk)}>{risk} risk</Badge>}
+                        <Badge tone={q.status === "answered" ? "green" : q.status === "escalated" ? "red" : "amber"}>{q.status}</Badge>
+                      </div>
                     </div>
-                    <Badge tone={q.status === "answered" ? "green" : q.status === "escalated" ? "red" : "amber"}>{q.status}</Badge>
-                  </div>
-                  {q.answer && <p className="text-xs text-slate-500 mt-2 bg-slate-50 rounded-lg px-3 py-2">{q.answer}</p>}
-                  {q.status !== "answered" && (
-                    <div className="mt-2">
-                      {replyFor === q.id ? (
-                        <div className="space-y-2">
-                          <Textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={2} />
+                    {q.answer && <p className="text-xs text-slate-500 mt-2 bg-slate-50 rounded-lg px-3 py-2">{q.answer}</p>}
+                    {q.status !== "answered" && (
+                      <div className="mt-2">
+                        {replyFor === q.id ? (
+                          <div className="space-y-2">
+                            <Textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={2} />
+                            <label className="flex items-center gap-2 text-xs text-slate-600">
+                              <input type="checkbox" checked={replyAddToKnowledge} onChange={(e) => setReplyAddToKnowledge(e.target.checked)} />
+                              <BookOpen size={12} /> Also add this answer to the RAG&apos;s knowledge (goes through the usual review queue)
+                            </label>
+                            <div className="flex gap-2">
+                              <Button size="sm" onClick={() => submitReply(q.id)}>
+                                Send answer{replyAddToKnowledge ? " + add to knowledge" : ""}
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => setReplyFor(null)}>
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
                           <div className="flex gap-2">
-                            <Button size="sm" onClick={() => submitReply(q.id)}>
-                              Send answer
+                            <Button size="sm" variant="outline" onClick={() => setReplyFor(q.id)}>
+                              Answer employee only
                             </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setReplyFor(null)}>
-                              Cancel
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setReplyFor(q.id);
+                                setReplyAddToKnowledge(true);
+                              }}
+                            >
+                              <BookOpen size={12} /> Answer + add to knowledge
                             </Button>
                           </div>
-                        </div>
-                      ) : (
-                        <Button size="sm" variant="outline" onClick={() => setReplyFor(q.id)}>
-                          Answer now
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               {(qSubTab === "pending" ? pendingQs : answeredQs).length === 0 && (
                 <p className="text-sm text-slate-400 text-center py-8">Nothing here yet.</p>
               )}
@@ -758,6 +953,27 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
             )}
           </CardBody>
         )}
+
+        {tab === "activity" && (
+          <CardBody>
+            <p className="text-xs text-slate-500 flex items-center gap-1.5 mb-4">
+              <HistoryIcon size={13} /> Administrative and system events for this RAG - people added, documents uploaded, rules changed,
+              republish events. Not conversation content - see Communications for that.
+            </p>
+            <div className="space-y-2">
+              {systemEvents.map((e) => (
+                <div key={e.id} className="flex items-start gap-2.5 text-sm">
+                  <HistoryIcon size={13} className="text-slate-300 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-slate-700">{e.text}</p>
+                    <p className="text-xs text-slate-400">{formatDateTime(e.at)}</p>
+                  </div>
+                </div>
+              ))}
+              {systemEvents.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No activity recorded yet.</p>}
+            </div>
+          </CardBody>
+        )}
       </Card>
 
       <Modal open={!!reviewingDoc} onClose={() => setReviewDocId(null)} title="Review content" widthClass="max-w-lg">
@@ -771,6 +987,13 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
           />
         )}
       </Modal>
+
+      <GlobalScopeConfirmModal
+        open={confirmingGlobalKeyword}
+        onClose={() => setConfirmingGlobalKeyword(false)}
+        onConfirm={createKeyword}
+        affectedLabel={`every RAG system in this organisation (${rags.filter((r) => r.orgId === rag.orgId).length})`}
+      />
     </AppShell>
   );
 }

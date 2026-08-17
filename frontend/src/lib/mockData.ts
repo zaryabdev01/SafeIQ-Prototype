@@ -1,4 +1,6 @@
 import type {
+  Achievement,
+  Action,
   AlertCase,
   AlertCaseMessage,
   AlertTask,
@@ -8,6 +10,7 @@ import type {
   ChatMessage,
   DashboardAlert,
   EmergencyEvent,
+  GlobalAlertRule,
   Incident,
   Invite,
   LoginHistoryEntry,
@@ -101,6 +104,7 @@ export const users: AppUser[] = [
     twoFactorEnabled: true,
     ipLockEnabled: true,
     allowedContacts: ["u-admin"],
+    isSafeguardingLead: true,
     createdAt: "2026-04-02T09:00:00Z",
   },
   {
@@ -461,15 +465,29 @@ export const dashboardAlerts: DashboardAlert[] = [
 ];
 
 export const onboardingVideos: OnboardingVideo[] = [
-  { id: "v-1", title: "Welcome to SafeIQ", description: "A 2-minute tour of your organisation dashboard and what to set up first.", thumbnailGradient: "from-indigo-500 to-violet-600", audience: "organisation", order: 1, durationSeconds: 128 },
-  { id: "v-2", title: "Creating your first RAG", description: "How to create an isolated RAG system, set an access password, and drop in your first documents.", thumbnailGradient: "from-teal-500 to-emerald-600", audience: "organisation", order: 2, durationSeconds: 205 },
-  { id: "v-3", title: "Inviting your team", description: "Send magic-link invites, track who's accepted, and assign RAG access codes.", thumbnailGradient: "from-amber-500 to-orange-600", audience: "organisation", order: 3, durationSeconds: 164 },
-  { id: "v-4", title: "Setting up alert categories", description: "Choose which question types should notify your organisation immediately.", thumbnailGradient: "from-rose-500 to-pink-600", audience: "organisation", order: 4, durationSeconds: 142 },
-  { id: "v-5", title: "Using the AI agent widget", description: "How the floating AI agent works for you, including switching between assigned RAGs.", thumbnailGradient: "from-sky-500 to-blue-600", audience: "all", order: 5, durationSeconds: 176 },
-  { id: "v-6", title: "Your first day as an employee", description: "What to expect: signing in, accepting your invite, and finding your assigned RAGs.", thumbnailGradient: "from-emerald-500 to-teal-600", audience: "employee", order: 6, durationSeconds: 118 },
-  { id: "v-7", title: "Switching between RAGs", description: "How to use your unique access code to switch the AI agent onto a different RAG.", thumbnailGradient: "from-fuchsia-500 to-purple-600", audience: "employee", order: 7, durationSeconds: 95 },
-  { id: "v-8", title: "Safety features overview", description: "Lock-screen audio recording, the emergency siren, and the Emergency Safe Word - what they do and when to use them.", thumbnailGradient: "from-red-500 to-rose-600", audience: "employee", order: 8, durationSeconds: 210 },
-  { id: "v-9", title: "Booking time in the calendar", description: "How organisations and employees can book check-ins linked to a specific RAG.", thumbnailGradient: "from-cyan-500 to-teal-600", audience: "all", order: 9, durationSeconds: 88 },
+  { id: "v-1", title: "Welcome to SafeIQ", description: "A 2-minute tour of your organisation dashboard and what to set up first.", thumbnailGradient: "from-indigo-500 to-violet-600", audience: "organisation", order: 1, durationSeconds: 128, sprintPosition: 1, category: "Getting Started", userTypes: ["org_admin", "manager"], estimatedMinutes: 2, aiKeywords: ["welcome", "tour", "dashboard"], published: true },
+  { id: "v-2", title: "Creating your first RAG", description: "How to create an isolated RAG system, set an access password, and drop in your first documents.", thumbnailGradient: "from-teal-500 to-emerald-600", audience: "organisation", order: 2, durationSeconds: 205, sprintPosition: 2, category: "Getting Started", userTypes: ["org_admin", "manager"], prerequisiteId: "v-1", estimatedMinutes: 4, aiKeywords: ["rag", "create", "documents"], published: true },
+  { id: "v-3", title: "Inviting your team", description: "Send magic-link invites, track who's accepted, and assign RAG access codes.", thumbnailGradient: "from-amber-500 to-orange-600", audience: "organisation", order: 3, durationSeconds: 164, sprintPosition: 3, category: "Employees", userTypes: ["org_admin", "manager"], prerequisiteId: "v-2", estimatedMinutes: 3, aiKeywords: ["invite", "team", "employees"], published: true },
+  { id: "v-4", title: "Setting up alert categories", description: "Choose which question types should notify your organisation immediately.", thumbnailGradient: "from-rose-500 to-pink-600", audience: "organisation", order: 4, durationSeconds: 142, sprintPosition: 4, category: "Training", userTypes: ["org_admin", "manager"], prerequisiteId: "v-2", estimatedMinutes: 3, aiKeywords: ["alerts", "keywords", "risk"], published: true },
+  { id: "v-5", title: "Using the AI agent widget", description: "How the floating AI agent works for you, including switching between assigned RAGs.", thumbnailGradient: "from-sky-500 to-blue-600", audience: "all", order: 5, durationSeconds: 176, sprintPosition: 5, category: "Getting Started", prerequisiteId: "v-1", estimatedMinutes: 3, aiKeywords: ["widget", "ai agent", "ask"], published: true },
+  { id: "v-6", title: "Your first day as an employee", description: "What to expect: signing in, accepting your invite, and finding your assigned RAGs.", thumbnailGradient: "from-emerald-500 to-teal-600", audience: "employee", order: 6, durationSeconds: 118, sprintPosition: 1, category: "Getting Started", userTypes: ["employee"], estimatedMinutes: 2, aiKeywords: ["first day", "sign in", "invite"], published: true },
+  { id: "v-7", title: "Switching between RAGs", description: "How to use your unique access code to switch the AI agent onto a different RAG.", thumbnailGradient: "from-fuchsia-500 to-purple-600", audience: "employee", order: 7, durationSeconds: 95, sprintPosition: 2, category: "Getting Started", userTypes: ["employee"], prerequisiteId: "v-6", estimatedMinutes: 2, aiKeywords: ["access code", "switch", "rag"], published: true },
+  { id: "v-8", title: "Safety features overview", description: "Lock-screen audio recording, the emergency siren, and the Emergency Safe Word - what they do and when to use them.", thumbnailGradient: "from-red-500 to-rose-600", audience: "employee", order: 8, durationSeconds: 210, sprintPosition: 3, category: "Training", userTypes: ["employee"], prerequisiteId: "v-6", estimatedMinutes: 4, aiKeywords: ["safety", "emergency", "siren"], published: true },
+  { id: "v-9", title: "Booking time in the calendar", description: "How organisations and employees can book check-ins linked to a specific RAG.", thumbnailGradient: "from-cyan-500 to-teal-600", audience: "all", order: 9, durationSeconds: 88, sprintPosition: 6, category: "General", estimatedMinutes: 2, aiKeywords: ["calendar", "booking", "check-in"], published: true },
+];
+
+// Client feedback (17/08/2026, gap-analysis §3): sharing/assignment targeting
+// by Team/Department/Location - kept as the lightest possible mock
+// representation (static lists) since nothing else in the app needs these as
+// real, membership-tracked entities yet.
+export const TEAMS = ["Night Care Team", "Domiciliary Team", "Day Services Team"];
+export const DEPARTMENTS = ["Care Delivery", "Operations", "People & Culture"];
+export const LOCATIONS = ["Leeds - Bright Care House", "Leeds - Riverside Home", "Wakefield - Fieldhead Home"];
+
+export const achievements: Achievement[] = [
+  { id: "ach-getting-started", label: "Getting Started", description: "Complete your first Help Hub item.", icon: "✅" },
+  { id: "ach-platform-explorer", label: "Platform Explorer", description: "Complete 5 Help Hub items.", icon: "🧭" },
+  { id: "ach-org-ready", label: "Organisation Ready", description: "Complete every item in your Help Sprint.", icon: "🔒" },
 ];
 
 export const bookings: Booking[] = [
@@ -539,6 +557,7 @@ export const alertCases: AlertCase[] = [
     status: "open",
     severity: "high",
     participantIds: [],
+    context: "Reporting a concern raised by a resident's family, not describing their own risk.",
     createdAt: "2026-07-23T09:05:00Z",
   },
   {
@@ -552,9 +571,108 @@ export const alertCases: AlertCase[] = [
     status: "closed",
     severity: "critical",
     participantIds: [],
+    context: "Describing their own risk directly.",
     createdAt: "2026-07-21T08:30:00Z",
     closedAt: "2026-07-21T10:15:00Z",
     closedBy: "u-priya",
+  },
+];
+
+export const actions: Action[] = [
+  {
+    id: "act-1",
+    orgId: ORG_ID,
+    ragId: "rag-safeguarding",
+    assigneeId: "u-priya",
+    title: "Review Aisha Khan's safeguarding alert case",
+    priority: "urgent",
+    dueAt: "2026-08-18",
+    status: "open",
+    sourceAlertCaseId: "case-2",
+    createdAt: "2026-07-21T08:35:00Z",
+  },
+  {
+    id: "act-2",
+    orgId: ORG_ID,
+    ragId: "rag-careplans",
+    assigneeId: "u-priya",
+    title: "Follow up with Daniel Osei's family query",
+    priority: "high",
+    dueAt: "2026-08-19",
+    status: "in_progress",
+    sourceAlertCaseId: "case-1",
+    createdAt: "2026-07-23T09:10:00Z",
+  },
+  {
+    id: "act-3",
+    orgId: ORG_ID,
+    ragId: "rag-healthsafety",
+    assigneeId: "u-tom",
+    title: "Confirm hoist repair completed in room 4",
+    priority: "medium",
+    dueAt: "2026-08-22",
+    status: "open",
+    createdAt: "2026-07-23T07:50:00Z",
+  },
+  {
+    id: "act-4",
+    orgId: ORG_ID,
+    assigneeId: "u-admin",
+    title: "Sign off Q3 safeguarding training refresh",
+    priority: "low",
+    dueAt: "2026-09-01",
+    status: "completed",
+    createdAt: "2026-07-10T10:00:00Z",
+  },
+];
+
+export const globalAlertRules: GlobalAlertRule[] = [
+  {
+    id: "gar-1",
+    orgId: ORG_ID,
+    phrase: "suicide",
+    category: "Self-harm & suicide risk",
+    severity: "critical",
+    ragScope: "all",
+    recipientRoles: ["administrator", "manager"],
+    autoCreateAction: true,
+    acknowledgementRequired: true,
+    status: "active",
+    triggeredCount: 3,
+    createdBy: "Morgan Ellis",
+    createdAt: "2026-06-02T09:00:00Z",
+    changeLog: [{ changedBy: "Morgan Ellis", changedAt: "2026-06-02T09:00:00Z", summary: "Rule created (organisation-wide, critical)" }],
+  },
+  {
+    id: "gar-2",
+    orgId: ORG_ID,
+    phrase: "safeguarding concern",
+    category: "Safeguarding",
+    severity: "high",
+    ragScope: "all",
+    recipientRoles: ["administrator", "manager", "support"],
+    autoCreateAction: true,
+    acknowledgementRequired: false,
+    status: "active",
+    triggeredCount: 1,
+    createdBy: "Morgan Ellis",
+    createdAt: "2026-06-10T11:20:00Z",
+    changeLog: [{ changedBy: "Morgan Ellis", changedAt: "2026-06-10T11:20:00Z", summary: "Rule created (organisation-wide, high)" }],
+  },
+  {
+    id: "gar-3",
+    orgId: ORG_ID,
+    phrase: "unsafe staffing levels",
+    category: "Operational risk",
+    severity: "medium",
+    ragScope: "all",
+    recipientRoles: ["administrator"],
+    autoCreateAction: false,
+    acknowledgementRequired: false,
+    status: "suggested",
+    triggeredCount: 0,
+    proposedBy: "Priya Patel",
+    proposedAt: "2026-08-10T14:00:00Z",
   },
 ];
 

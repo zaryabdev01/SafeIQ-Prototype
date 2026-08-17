@@ -2,9 +2,13 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type {
+  Action,
+  ActionStatus,
   AiSuggestedMetadata,
   AlertCase,
   AlertCaseMessage,
+  AlertKeyword,
+  AlertSeverity,
   AlertTask,
   AppUser,
   Booking,
@@ -13,6 +17,7 @@ import type {
   DashboardAlert,
   EmergencyEvent,
   EmergencyTrigger,
+  GlobalAlertRule,
   Incident,
   Invite,
   LoginHistoryEntry,
@@ -29,10 +34,13 @@ import type {
   TeamRole,
   TestFeedback,
   Conversation,
+  UserStatus,
+  KeywordScope,
 } from "./types";
 import {
   INTERNAL_ORG_ID,
   ORG_ID,
+  actions as seedActions,
   alertCases as seedAlertCases,
   alertCaseMessages as seedAlertCaseMessages,
   alertTasks as seedAlertTasks,
@@ -41,6 +49,7 @@ import {
   conversations as seedConversations,
   dashboardAlerts as seedAlerts,
   emergencyEvents as seedEmergencyEvents,
+  globalAlertRules as seedGlobalAlertRules,
   incidents as seedIncidents,
   invites as seedInvites,
   loginHistory as seedLoginHistory,
@@ -99,12 +108,16 @@ interface AppState {
   chatMessages: ChatMessage[];
   notesByUser: Record<string, Note[]>;
   personAlertsByUser: Record<string, PersonAlertRule[]>;
+  helpCompletedByUser: Record<string, string[]>; // userId -> video ids completed, for the Help Sprint progress bar
+  helpAccessLog: { id: string; userId: string; videoId: string; at: string }[];
   alertCases: AlertCase[];
   alertCaseMessages: AlertCaseMessage[];
   alertTasks: AlertTask[];
   incidents: Incident[];
   ragTestResults: RagTestResult[];
   emergencyEvents: EmergencyEvent[];
+  globalAlertRules: GlobalAlertRule[];
+  actions: Action[];
 }
 
 function initialState(): AppState {
@@ -134,12 +147,16 @@ function initialState(): AppState {
     personAlertsByUser: {
       "u-priya": [{ id: "pa-1", category: "Missed lone-working check-in", severity: "high", notifyEmail: "morgan.ellis@brightcare.co.uk" }],
     },
+    helpCompletedByUser: {},
+    helpAccessLog: [],
     alertCases: seedAlertCases,
     alertCaseMessages: seedAlertCaseMessages,
     alertTasks: seedAlertTasks,
     incidents: seedIncidents,
     ragTestResults: seedRagTestResults,
     emergencyEvents: seedEmergencyEvents,
+    globalAlertRules: seedGlobalAlertRules,
+    actions: seedActions,
   };
 }
 
@@ -162,9 +179,10 @@ interface AppContextValue extends AppState {
   acceptInviteDemo: (inviteId: string) => void;
 
   addNote: (userId: string, text: string) => void;
-  addPersonAlertRule: (userId: string, rule: Omit<PersonAlertRule, "id">) => void;
+  addPersonAlertRule: (userId: string, rule: Omit<PersonAlertRule, "id" | "createdBy" | "createdAt" | "changeLog">) => void;
   removePersonAlertRule: (userId: string, ruleId: string) => void;
   setTeamRole: (userId: string, teamRole: TeamRole) => void;
+  setUserStatus: (userId: string, status: UserStatus) => void;
 
   updateOrganisation: (orgId: string, data: { name: string; sector: string }) => void;
 
@@ -180,8 +198,23 @@ interface AppContextValue extends AppState {
     updates: Partial<Pick<RagDocument, "name" | "contentType" | "description" | "appliesTo" | "accessLevel" | "effectiveDate" | "reviewDate" | "owner" | "approvalStatus">>
   ) => void;
   toggleAlertKeyword: (ragId: string, keywordId: string) => void;
-  addAlertKeyword: (ragId: string, keyword: string) => void;
+  addAlertKeyword: (ragId: string, keyword: string, severity: AlertSeverity, scope: KeywordScope) => void;
   removeAlertKeyword: (ragId: string, keywordId: string) => void;
+
+  createGlobalAlertRule: (
+    rule: Pick<GlobalAlertRule, "phrase" | "category" | "severity" | "ragScope" | "recipientRoles" | "autoCreateAction" | "acknowledgementRequired">
+  ) => void;
+  proposeGlobalAlertRule: (
+    rule: Pick<GlobalAlertRule, "phrase" | "category" | "severity" | "ragScope" | "recipientRoles" | "autoCreateAction" | "acknowledgementRequired">
+  ) => void;
+  approveGlobalAlertRule: (
+    ruleId: string,
+    edits?: Partial<Pick<GlobalAlertRule, "phrase" | "category" | "severity" | "ragScope" | "recipientRoles" | "autoCreateAction" | "acknowledgementRequired">>
+  ) => void;
+  rejectGlobalAlertRule: (ruleId: string) => void;
+
+  createAction: (action: Omit<Action, "id" | "orgId" | "createdAt" | "status">) => void;
+  updateActionStatus: (actionId: string, status: ActionStatus) => void;
   setRagEscalationNote: (ragId: string, note: string) => void;
   answerQuestion: (questionId: string, answer: string) => void;
   assignRagToUser: (ragId: string, userId: string, alertOwnerId?: string) => string;
@@ -191,11 +224,17 @@ interface AppContextValue extends AppState {
   setTestFeedback: (resultId: string, feedback: TestFeedback) => void;
 
   createBooking: (b: Omit<Booking, "id" | "orgId">) => void;
+  updateBooking: (bookingId: string, data: Partial<Omit<Booking, "id" | "orgId">>) => void;
+  cancelBooking: (bookingId: string) => void;
 
   toggle2FA: (userId: string) => void;
   toggleIPLock: (userId: string) => void;
 
   addVideo: (v: Omit<OnboardingVideo, "id" | "order">) => void;
+  updateVideo: (videoId: string, updates: Partial<Omit<OnboardingVideo, "id">>) => void;
+  markHelpItemComplete: (userId: string, videoId: string) => void;
+  assignHelpItem: (videoId: string, userId: string, dueDate: string) => void;
+  logHelpAccess: (userId: string, videoId: string) => void;
 
   askRag: (ragId: string, userId: string, question: string, askedViaVoice?: boolean) => RagQuestion;
   activeRagByUser: Record<string, string | null>;
@@ -402,14 +441,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
-  const addPersonAlertRule = useCallback((userId: string, rule: Omit<PersonAlertRule, "id">) => {
-    setState((s) => ({
-      ...s,
-      personAlertsByUser: {
-        ...s.personAlertsByUser,
-        [userId]: [...(s.personAlertsByUser[userId] ?? []), { ...rule, id: id("pa") }],
-      },
-    }));
+  const addPersonAlertRule = useCallback((userId: string, rule: Omit<PersonAlertRule, "id" | "createdBy" | "createdAt" | "changeLog">) => {
+    setState((s) => {
+      const actingUser = s.users.find((u) => u.id === s.currentUserId);
+      const createdBy = actingUser?.name ?? "Unknown";
+      const createdAt = nowIso();
+      const scopeLabel = rule.scope === "global" ? "organisation-wide" : "this employee only";
+      const newRule: PersonAlertRule = {
+        ...rule,
+        id: id("pa"),
+        createdBy,
+        createdAt,
+        changeLog: [{ changedBy: createdBy, changedAt: createdAt, summary: `Rule created (${scopeLabel}, ${rule.severity})` }],
+      };
+      return { ...s, personAlertsByUser: { ...s.personAlertsByUser, [userId]: [...(s.personAlertsByUser[userId] ?? []), newRule] } };
+    });
   }, []);
 
   const removePersonAlertRule = useCallback((userId: string, ruleId: string) => {
@@ -424,6 +470,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setTeamRole = useCallback((userId: string, teamRole: TeamRole) => {
     setState((s) => ({ ...s, users: s.users.map((u) => (u.id === userId ? { ...u, teamRole } : u)) }));
+  }, []);
+
+  const setUserStatus = useCallback((userId: string, status: UserStatus) => {
+    setState((s) => ({ ...s, users: s.users.map((u) => (u.id === userId ? { ...u, status } : u)) }));
   }, []);
 
   const updateOrganisation = useCallback((orgId: string, data: { name: string; sector: string }) => {
@@ -515,13 +565,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
-  const addAlertKeyword = useCallback((ragId: string, keyword: string) => {
-    setState((s) => ({
-      ...s,
-      rags: s.rags.map((r) =>
-        r.id === ragId ? { ...r, alertKeywords: [...r.alertKeywords, { id: id("ak"), keyword, enabled: true }] } : r
-      ),
-    }));
+  const addAlertKeyword = useCallback((ragId: string, keyword: string, severity: AlertSeverity, scope: KeywordScope) => {
+    setState((s) => {
+      const actingUser = s.users.find((u) => u.id === s.currentUserId);
+      const createdBy = actingUser?.name ?? "Unknown";
+      const createdAt = nowIso();
+      const scopeLabel = scope === "global" ? "organisation-wide" : "this RAG only";
+      const newKeyword: AlertKeyword = {
+        id: id("ak"),
+        keyword,
+        enabled: true,
+        severity,
+        scope,
+        createdBy,
+        createdAt,
+        changeLog: [{ changedBy: createdBy, changedAt: createdAt, summary: `Keyword added (${scopeLabel}, ${severity})` }],
+      };
+      return { ...s, rags: s.rags.map((r) => (r.id === ragId ? { ...r, alertKeywords: [...r.alertKeywords, newKeyword] } : r)) };
+    });
   }, []);
 
   const removeAlertKeyword = useCallback((ragId: string, keywordId: string) => {
@@ -529,6 +590,100 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ...s,
       rags: s.rags.map((r) => (r.id === ragId ? { ...r, alertKeywords: r.alertKeywords.filter((k) => k.id !== keywordId) } : r)),
     }));
+  }, []);
+
+  type GlobalAlertRuleInput = Pick<
+    GlobalAlertRule,
+    "phrase" | "category" | "severity" | "ragScope" | "recipientRoles" | "autoCreateAction" | "acknowledgementRequired"
+  >;
+
+  const createGlobalAlertRule = useCallback((rule: GlobalAlertRuleInput) => {
+    setState((s) => {
+      const actingUser = s.users.find((u) => u.id === s.currentUserId);
+      const createdBy = actingUser?.name ?? "Unknown";
+      const createdAt = nowIso();
+      const newRule: GlobalAlertRule = {
+        ...rule,
+        id: id("gar"),
+        orgId: actingUser?.orgId ?? ORG_ID,
+        status: "active",
+        triggeredCount: 0,
+        createdBy,
+        createdAt,
+        changeLog: [{ changedBy: createdBy, changedAt: createdAt, summary: `Rule created (organisation-wide, ${rule.severity})` }],
+      };
+      return { ...s, globalAlertRules: [newRule, ...s.globalAlertRules] };
+    });
+  }, []);
+
+  const proposeGlobalAlertRule = useCallback((rule: GlobalAlertRuleInput) => {
+    setState((s) => {
+      const actingUser = s.users.find((u) => u.id === s.currentUserId);
+      const newRule: GlobalAlertRule = {
+        ...rule,
+        id: id("gar"),
+        orgId: actingUser?.orgId ?? ORG_ID,
+        status: "suggested",
+        triggeredCount: 0,
+        proposedBy: actingUser?.name ?? "Unknown",
+        proposedAt: nowIso(),
+      };
+      return { ...s, globalAlertRules: [newRule, ...s.globalAlertRules] };
+    });
+  }, []);
+
+  const approveGlobalAlertRule = useCallback((ruleId: string, edits?: Partial<GlobalAlertRuleInput>) => {
+    setState((s) => {
+      const actingUser = s.users.find((u) => u.id === s.currentUserId);
+      const approvedBy = actingUser?.name ?? "Unknown";
+      const approvedAt = nowIso();
+      return {
+        ...s,
+        globalAlertRules: s.globalAlertRules.map((r) =>
+          r.id === ruleId
+            ? {
+                ...r,
+                ...edits,
+                status: "active",
+                createdBy: r.createdBy ?? approvedBy,
+                createdAt: r.createdAt ?? approvedAt,
+                changeLog: [
+                  ...(r.changeLog ?? []),
+                  { changedBy: approvedBy, changedAt: approvedAt, summary: edits ? "Suggestion edited and approved as global" : "Suggestion approved as global" },
+                ],
+              }
+            : r
+        ),
+      };
+    });
+  }, []);
+
+  const rejectGlobalAlertRule = useCallback((ruleId: string) => {
+    setState((s) => {
+      const actingUser = s.users.find((u) => u.id === s.currentUserId);
+      const rejectedBy = actingUser?.name ?? "Unknown";
+      const rejectedAt = nowIso();
+      return {
+        ...s,
+        globalAlertRules: s.globalAlertRules.map((r) =>
+          r.id === ruleId
+            ? { ...r, status: "rejected", changeLog: [...(r.changeLog ?? []), { changedBy: rejectedBy, changedAt: rejectedAt, summary: "Suggestion rejected" }] }
+            : r
+        ),
+      };
+    });
+  }, []);
+
+  const createAction = useCallback((action: Omit<Action, "id" | "orgId" | "createdAt" | "status">) => {
+    setState((s) => {
+      const actingUser = s.users.find((u) => u.id === s.currentUserId);
+      const newAction: Action = { ...action, id: id("act"), orgId: actingUser?.orgId ?? ORG_ID, status: "open", createdAt: nowIso() };
+      return { ...s, actions: [newAction, ...s.actions] };
+    });
+  }, []);
+
+  const updateActionStatus = useCallback((actionId: string, status: ActionStatus) => {
+    setState((s) => ({ ...s, actions: s.actions.map((a) => (a.id === actionId ? { ...a, status } : a)) }));
   }, []);
 
   const setRagEscalationNote = useCallback((ragId: string, note: string) => {
@@ -626,6 +781,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const updateBooking = useCallback((bookingId: string, data: Partial<Omit<Booking, "id" | "orgId">>) => {
+    setState((s) => ({ ...s, bookings: s.bookings.map((b) => (b.id === bookingId ? { ...b, ...data } : b)) }));
+  }, []);
+
+  const cancelBooking = useCallback((bookingId: string) => {
+    setState((s) => ({ ...s, bookings: s.bookings.map((b) => (b.id === bookingId ? { ...b, cancelled: true } : b)) }));
+  }, []);
+
   const toggle2FA = useCallback((userId: string) => {
     setState((s) => ({ ...s, users: s.users.map((u) => (u.id === userId ? { ...u, twoFactorEnabled: !u.twoFactorEnabled } : u)) }));
   }, []);
@@ -636,6 +799,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addVideo = useCallback((v: Omit<OnboardingVideo, "id" | "order">) => {
     setState((s) => ({ ...s, onboardingVideos: [...s.onboardingVideos, { ...v, id: id("v"), order: s.onboardingVideos.length + 1 }] }));
+  }, []);
+
+  const updateVideo = useCallback((videoId: string, updates: Partial<Omit<OnboardingVideo, "id">>) => {
+    setState((s) => ({ ...s, onboardingVideos: s.onboardingVideos.map((v) => (v.id === videoId ? { ...v, ...updates } : v)) }));
+  }, []);
+
+  const markHelpItemComplete = useCallback((userId: string, videoId: string) => {
+    setState((s) => ({
+      ...s,
+      helpCompletedByUser: {
+        ...s.helpCompletedByUser,
+        [userId]: [...new Set([...(s.helpCompletedByUser[userId] ?? []), videoId])],
+      },
+    }));
+  }, []);
+
+  const assignHelpItem = useCallback((videoId: string, userId: string, dueDate: string) => {
+    setState((s) => ({
+      ...s,
+      onboardingVideos: s.onboardingVideos.map((v) => (v.id === videoId ? { ...v, requiredForUserId: userId, requiredDueDate: dueDate } : v)),
+    }));
+  }, []);
+
+  const logHelpAccess = useCallback((userId: string, videoId: string) => {
+    setState((s) => ({
+      ...s,
+      helpAccessLog: [{ id: id("hal"), userId, videoId, at: nowIso() }, ...s.helpAccessLog],
+    }));
   }, []);
 
   const askRag = useCallback((ragId: string, userId: string, question: string, askedViaVoice?: boolean) => {
@@ -942,6 +1133,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addPersonAlertRule,
     removePersonAlertRule,
     setTeamRole,
+    setUserStatus,
     updateOrganisation,
     createRag,
     publishRag,
@@ -950,6 +1142,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     toggleAlertKeyword,
     addAlertKeyword,
     removeAlertKeyword,
+    createGlobalAlertRule,
+    proposeGlobalAlertRule,
+    approveGlobalAlertRule,
+    rejectGlobalAlertRule,
+    createAction,
+    updateActionStatus,
     setRagEscalationNote,
     answerQuestion,
     assignRagToUser,
@@ -957,9 +1155,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addRagTestResult,
     setTestFeedback,
     createBooking,
+    updateBooking,
+    cancelBooking,
     toggle2FA,
     toggleIPLock,
     addVideo,
+    updateVideo,
+    markHelpItemComplete,
+    assignHelpItem,
+    logHelpAccess,
     askRag,
     activeRagByUser,
     setActiveRagForUser,
