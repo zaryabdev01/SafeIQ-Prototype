@@ -152,6 +152,70 @@ class OnboardingEvent(TenantBase):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
+class AlertSeverity(enum.StrEnum):
+    """Matches the frontend's existing AlertSeverity union
+    (frontend/src/lib/types.ts) - used by custom per-person alert rules
+    here, and later by keyword-triggered alert cases once the RAG engine
+    (Milestone 5) exists."""
+
+    low = "low"
+    medium = "medium"
+    high = "high"
+    critical = "critical"
+
+
+class TeamNote(TenantBase):
+    """Milestone 4 (Team Management), task 31 - a free-text observation
+    logged against a team member by a manager/support/admin, e.g. for
+    safeguarding case context. Append-only by design (no update/delete
+    endpoint) - a note is a timestamped record, not a mutable field."""
+
+    __tablename__ = "team_notes"
+    __table_args__ = _TENANT_SCHEMA
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    subject_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id", ondelete="CASCADE"))
+    author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id"))
+    text: Mapped[str] = mapped_column(String(2000))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class PersonAlertRule(TenantBase):
+    """Milestone 4, task 31 - a custom alert rule scoped to one team
+    member (e.g. "notify on missed check-in"), distinct from the
+    keyword-triggered RAG alert cases that come with the RAG engine
+    (Milestone 5) - this is configuration, not an alert occurrence."""
+
+    __tablename__ = "person_alert_rules"
+    __table_args__ = _TENANT_SCHEMA
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    subject_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id", ondelete="CASCADE"))
+    category: Mapped[str] = mapped_column(String(200))
+    severity: Mapped[AlertSeverity] = mapped_column(default=AlertSeverity.medium)
+    notify_email: Mapped[str] = mapped_column(String(320))
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id"))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class LoginEvent(TenantBase):
+    """Real login history for Settings 'Account login history' (client
+    feedback, 17/08/2026). Deliberately separate from the audit ledger:
+    ADR-005 only ever stores a content hash there, never real PII, so it
+    structurally cannot answer "what IP did this user log in from" - this
+    table holds that detail, written alongside (not instead of) the
+    existing `user.logged_in` audit entry in the login route."""
+
+    __tablename__ = "login_events"
+    __table_args__ = _TENANT_SCHEMA
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id", ondelete="CASCADE"))
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 class AuditLedgerEntry(TenantBase):
     """Append-only, hash-chained per ADR-005. `provision_tenant_schema`
     revokes UPDATE/DELETE on this table at the DB level - see

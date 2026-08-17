@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +12,7 @@ from app.core.config import get_settings
 from app.core.security import create_access_token, create_onboarding_token, decode_token, hash_password, verify_password
 from app.db.control_models import Organisation, UserDirectoryEntry
 from app.db.session import get_control_session_dep, tenant_session
-from app.models.tenant import KycRecord, OtpCode, TeamRole, User
+from app.models.tenant import KycRecord, LoginEvent, OtpCode, TeamRole, User
 from app.schemas.auth import (
     EmployeeDirectSignupRequest,
     KycStartResponse,
@@ -269,7 +269,7 @@ async def kyc_status(onboarding_token: str) -> KycStatusResponse:
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, control_db: AsyncSession = Depends(get_control_session_dep)) -> TokenResponse:
+async def login(payload: LoginRequest, request: Request, control_db: AsyncSession = Depends(get_control_session_dep)) -> TokenResponse:
     org = await control_db.get(Organisation, payload.organisation_id)
     if org is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
@@ -284,6 +284,16 @@ async def login(payload: LoginRequest, control_db: AsyncSession = Depends(get_co
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Verify your email before logging in")
 
         await audit_service.record_event(tenant_db, event_type="user.logged_in", subject_id=user.id, owner_id=user.id)
+        # Separate from the audit entry above by design - see LoginEvent's docstring. The audit
+        # ledger proves *that* a login happened; this table is what Settings' "Account login
+        # history" actually reads, since it needs real IP/device detail the ledger can't hold.
+        tenant_db.add(
+            LoginEvent(
+                user_id=user.id,
+                ip=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+            )
+        )
         await tenant_db.commit()
     except HTTPException:
         await tenant_db.rollback()

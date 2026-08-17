@@ -1,17 +1,18 @@
 # SafeIQ backend
 
-FastAPI service implementing **Milestone 2 — Authentication & Multi-Tenant Foundation** and
-**Milestone 3 — Onboarding CMS** from `docs/SafeIQ_Milestone_Plan_v1.1_revised.docx`, built against
-the architecture already proposed in `docs/architecture/` (ADR-003's schema-per-tenant model,
-ADR-005's hash-chained audit ledger, security-compliance-design.md's role hierarchy and Argon2id
-hashing).
+FastAPI service implementing **Milestone 2 — Authentication & Multi-Tenant Foundation**,
+**Milestone 3 — Onboarding CMS**, and part of **Milestone 4 — Team Management** from
+`docs/SafeIQ_Milestone_Plan_v1.1_revised.docx`, built against the architecture already proposed in
+`docs/architecture/` (ADR-003's schema-per-tenant model, ADR-005's hash-chained audit ledger,
+security-compliance-design.md's role hierarchy and Argon2id hashing).
 
 This is a real, persistent backend - not a mock. The frontend prototype in `../frontend` is now
-partially integrated with it: signup, login, magic-link invites, team/role management, account
-settings, the audit trail, and the onboarding video CMS all call this API for real when signed in
-through the real email/password flow (as opposed to a demo persona) - see the root `README.md`'s
-"Real vs. mock" section. Everything else in the frontend (RAGs, alerts, chat, dashboard, calendar)
-still runs on the mock store, since this backend doesn't implement those modules yet.
+partially integrated with it: signup, login, magic-link invites, team/role management, team member
+profiles (notes, custom alert rules), account settings, the audit trail, and the onboarding video
+CMS all call this API for real when signed in through the real email/password flow (as opposed to a
+demo persona) - see the root `README.md`'s "Real vs. mock" section. Everything else in the frontend
+(RAGs, alerts, chat, dashboard, calendar) still runs on the mock store, since this backend doesn't
+implement those modules yet.
 
 ## Quick start
 
@@ -52,12 +53,12 @@ mypy app scripts                  # type check
 
 `tests/test_security.py`, `tests/test_audit_chain.py`, and `tests/test_onboarding_search.py` are
 pure unit tests with no external dependencies. `tests/test_auth_flow.py`,
-`tests/test_tenant_isolation.py`, and `tests/test_onboarding_cms.py` are integration tests that need
-a real Postgres (schema-per-tenant relies on `CREATE SCHEMA`, which SQLite can't do) -
-`tests/conftest.postgres_available` skips them with a clear message rather than failing when one
-isn't reachable. Against a real (e.g. Neon free-tier) database, the full suite takes several minutes
-- most integration tests provision a brand-new tenant schema, which is real DDL against real
-infrastructure, not a mock.
+`tests/test_tenant_isolation.py`, `tests/test_onboarding_cms.py`, and `tests/test_team_profile.py`
+are integration tests that need a real Postgres (schema-per-tenant relies on `CREATE SCHEMA`, which
+SQLite can't do) - `tests/conftest.postgres_available` skips them with a clear message rather than
+failing when one isn't reachable. Against a real (e.g. Neon free-tier) database, the full suite
+takes 15-25 minutes - most integration tests provision a brand-new tenant schema, which is real DDL
+against real infrastructure, not a mock, and free-tier round-trip latency varies run to run.
 
 ## What Milestone 2 asked for, and where it lives
 
@@ -82,6 +83,26 @@ infrastructure, not a mock.
 | 25. Hover-description / click-to-view | Frontend-only UX (`frontend/src/app/onboarding/page.tsx`); `POST /onboarding/videos/{id}/view` records the resulting view server-side |
 | 26. Share by email / to a registered user | `POST /onboarding/videos/{id}/share` - reuses the same `EmailSender` interface as Milestone 2's invites; "share to a registered user" resolves their email server-side rather than needing a separate in-app notification channel, since none exists yet |
 | 27. Onboarding analytics | `GET /onboarding/analytics` - view/share counts per video, top search queries, aggregated from `OnboardingEvent` (kept separate from the audit ledger, which is for compliance evidence, not high-volume analytics) |
+
+## What Milestone 4 (Team Management) asked for, and where it lives
+
+Tasks 28-30 (invite by email/magic link, accept-invite flow, invite log with resend/cancel) were
+already built as part of Milestone 2's `app/api/routes/invites.py` - they turned out to be needed
+early, to have any way to create a second user for testing signup/login. Only task 31 is new here;
+tasks 32-34 are explicitly **not implemented** - see below.
+
+| Task | Implementation |
+|---|---|
+| 28-30. Invites, accept flow, invite log | Already built in Milestone 2 - `app/api/routes/invites.py` |
+| 31. Member profiles (details, notes, alerts) | `GET /team/{id}` for the profile; `GET/POST /team/{id}/notes` and `GET/POST/DELETE /team/{id}/alert-rules` for notes and custom alert-rule configuration - both gated to manager/support/administrator/super_admin (`_TEAM_MANAGERS` in `app/api/routes/users.py`), matching who the frontend already let manage this |
+| 32. RAG assignments with access codes | **Not implemented - hard-blocked.** There's no RAG entity in this backend yet (that's Milestone 5, AI Knowledge Base). Building an "assignment" against a RAG concept that doesn't exist server-side would just need rework once Milestone 5 lands, so it wasn't attempted |
+| 33. Per-member activity view inside each RAG | Same blocker as task 32 - also depends on the chat/question-asking flow (Milestone 6) |
+| 34. Assignment management | Same blocker as task 32 |
+
+The frontend's team member profile page (`frontend/src/app/team/[id]/TeamMemberClient.tsx`) reflects
+this honestly: notes and alert rules are fully real when signed in for real, while the "flagged
+alert words" and "assigned RAG systems" sections show an explicit notice that they're waiting on
+Milestone 5, rather than silently rendering empty mock data that could be mistaken for a bug.
 
 ## How multi-tenancy actually works here
 

@@ -11,8 +11,8 @@ import { isOrgLevel } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/format";
 import { COUNTRIES, LANGUAGES, SECTORS } from "@/lib/constants";
 import type { Country, Language } from "@/lib/types";
-import { apiClient, ApiError, type ApiAuditEntry } from "@/lib/apiClient";
-import { ShieldCheck, Building2, History, Smartphone, Check, Globe2, FileLock2, Loader2 } from "lucide-react";
+import { apiClient, ApiError, type ApiAuditEntry, type ApiLoginEvent } from "@/lib/apiClient";
+import { ShieldCheck, Building2, History, Smartphone, Check, Globe2, FileLock2, Loader2, Search } from "lucide-react";
 
 export default function SettingsPage() {
   const { currentUser, isRealSession, toggle2FA, toggleIPLock, loginHistory, users, organisations, updateOrganisation } = useApp();
@@ -36,6 +36,11 @@ export default function SettingsPage() {
   const [auditVerifying, setAuditVerifying] = useState(false);
   const [auditError, setAuditError] = useState("");
 
+  const [loginEvents, setLoginEvents] = useState<ApiLoginEvent[]>([]);
+  const [loginEventsLoading, setLoginEventsLoading] = useState(false);
+  const [loginEventsError, setLoginEventsError] = useState("");
+  const [loginQuery, setLoginQuery] = useState("");
+
   useEffect(() => {
     if (!isRealSession || !isOrg) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- kicks off an async fetch on mount/session-change; loading flag must flip synchronously
@@ -46,6 +51,20 @@ export default function SettingsPage() {
       .catch((err) => setAuditError(err instanceof ApiError ? err.message : "Could not load the audit trail."))
       .finally(() => setAuditLoading(false));
   }, [isRealSession, isOrg]);
+
+  useEffect(() => {
+    if (!isRealSession || !isOrg) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- kicks off an async fetch on mount/search-change; loading flag must flip synchronously
+    setLoginEventsLoading(true);
+    const handle = window.setTimeout(() => {
+      apiClient
+        .listLoginHistory({ q: loginQuery.trim() || undefined, limit: 200 })
+        .then(setLoginEvents)
+        .catch((err) => setLoginEventsError(err instanceof ApiError ? err.message : "Could not load login history."))
+        .finally(() => setLoginEventsLoading(false));
+    }, 250);
+    return () => window.clearTimeout(handle);
+  }, [isRealSession, isOrg, loginQuery]);
 
   async function saveAccountSettings() {
     setAccountBusy(true);
@@ -252,40 +271,84 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-            <History size={15} /> {isOrg ? "Account login history - all users" : "Your login history"}
+            <History size={15} />
+            {isRealSession && isOrg ? "Account login history - all users (live)" : isOrg ? "Account login history - all users" : "Your login history"}
           </h2>
+          {isRealSession && isOrg && (
+            <div className="relative w-56">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={loginQuery}
+                onChange={(e) => setLoginQuery(e.target.value)}
+                placeholder="Search by name or email"
+                className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/30"
+              />
+              {loginEventsLoading && <Loader2 size={13} className="animate-spin text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2" />}
+            </div>
+          )}
         </CardHeader>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
-                {isOrg && <th className="px-5 py-2.5 font-medium">User</th>}
-                <th className="px-5 py-2.5 font-medium">IP address</th>
-                <th className="px-5 py-2.5 font-medium">Location</th>
-                <th className="px-5 py-2.5 font-medium">Device</th>
-                <th className="px-5 py-2.5 font-medium">Logged in</th>
-                <th className="px-5 py-2.5 font-medium">Logged out</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {historyRows.map((l) => (
-                <tr key={l.id}>
-                  {isOrg && <td className="px-5 py-3 text-slate-700">{userName(l.userId)}</td>}
-                  <td className="px-5 py-3 text-slate-500 font-mono text-xs">{l.ip}</td>
-                  <td className="px-5 py-3 text-slate-500">{l.location}</td>
-                  <td className="px-5 py-3 text-slate-500 flex items-center gap-1.5">
-                    <Smartphone size={12} /> {l.device}
-                  </td>
-                  <td className="px-5 py-3 text-slate-500">{formatDateTime(l.loginAt)}</td>
-                  <td className="px-5 py-3 text-slate-500">
-                    {l.logoutAt ? formatDateTime(l.logoutAt) : <Badge tone="green">Active now</Badge>}
-                  </td>
+        {isRealSession && isOrg ? (
+          <div className="overflow-x-auto">
+            {loginEventsError && <p className="text-xs text-red-600 px-5 pt-3">{loginEventsError}</p>}
+            <div className="max-h-[26rem] overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-white">
+                  <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
+                    <th className="px-5 py-2.5 font-medium">User</th>
+                    <th className="px-5 py-2.5 font-medium">IP address</th>
+                    <th className="px-5 py-2.5 font-medium">Device / user agent</th>
+                    <th className="px-5 py-2.5 font-medium">Logged in</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {loginEvents.map((e) => (
+                    <tr key={e.id}>
+                      <td className="px-5 py-3 text-slate-700">{e.user_name}</td>
+                      <td className="px-5 py-3 text-slate-500 font-mono text-xs">{e.ip ?? "-"}</td>
+                      <td className="px-5 py-3 text-slate-500 flex items-center gap-1.5 truncate max-w-xs">
+                        <Smartphone size={12} className="shrink-0" /> <span className="truncate">{e.user_agent ?? "-"}</span>
+                      </td>
+                      <td className="px-5 py-3 text-slate-500">{formatDateTime(e.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {loginEvents.length === 0 && !loginEventsLoading && <p className="py-8 text-center text-sm text-slate-400">No login history yet.</p>}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
+                  {isOrg && <th className="px-5 py-2.5 font-medium">User</th>}
+                  <th className="px-5 py-2.5 font-medium">IP address</th>
+                  <th className="px-5 py-2.5 font-medium">Location</th>
+                  <th className="px-5 py-2.5 font-medium">Device</th>
+                  <th className="px-5 py-2.5 font-medium">Logged in</th>
+                  <th className="px-5 py-2.5 font-medium">Logged out</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {historyRows.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No login history yet.</p>}
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {historyRows.map((l) => (
+                  <tr key={l.id}>
+                    {isOrg && <td className="px-5 py-3 text-slate-700">{userName(l.userId)}</td>}
+                    <td className="px-5 py-3 text-slate-500 font-mono text-xs">{l.ip}</td>
+                    <td className="px-5 py-3 text-slate-500">{l.location}</td>
+                    <td className="px-5 py-3 text-slate-500 flex items-center gap-1.5">
+                      <Smartphone size={12} /> {l.device}
+                    </td>
+                    <td className="px-5 py-3 text-slate-500">{formatDateTime(l.loginAt)}</td>
+                    <td className="px-5 py-3 text-slate-500">
+                      {l.logoutAt ? formatDateTime(l.logoutAt) : <Badge tone="green">Active now</Badge>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {historyRows.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No login history yet.</p>}
+          </div>
+        )}
       </Card>
     </AppShell>
   );

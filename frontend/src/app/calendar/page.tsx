@@ -342,7 +342,7 @@ export default function CalendarPage() {
                 </Button>
               </div>
             )}
-            <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
+            <div className="divide-y divide-slate-100 max-h-[22.5rem] overflow-y-auto">
               {upcoming.map((e) => (
                 <div key={`${e.kind}-${e.id}`} className="flex items-center gap-2 px-4 py-3 hover:bg-slate-50">
                   {e.kind === "review" ? (

@@ -197,6 +197,35 @@ export interface ApiOnboardingAnalytics {
   total_shares: number;
 }
 
+export type ApiAlertSeverity = "low" | "medium" | "high" | "critical";
+
+export interface ApiTeamNote {
+  id: string;
+  subject_user_id: string;
+  author_id: string;
+  author_name: string;
+  text: string;
+  created_at: string;
+}
+
+export interface ApiPersonAlertRule {
+  id: string;
+  subject_user_id: string;
+  category: string;
+  severity: ApiAlertSeverity;
+  notify_email: string;
+  created_at: string;
+}
+
+export interface ApiLoginEvent {
+  id: string;
+  user_id: string;
+  user_name: string;
+  ip: string | null;
+  user_agent: string | null;
+  created_at: string;
+}
+
 export const apiClient = {
   baseUrl: API_BASE,
 
@@ -228,7 +257,30 @@ export const apiClient = {
 
   listTeam: () => request<ApiUserProfile[]>("/team", { auth: true }),
 
+  listLoginHistory: (params: { q?: string; user_id?: string; limit?: number } = {}) => {
+    const query: Record<string, string> = {};
+    if (params.q) query.q = params.q;
+    if (params.user_id) query.user_id = params.user_id;
+    if (params.limit) query.limit = String(params.limit);
+    return request<ApiLoginEvent[]>("/team/login-history", { auth: true, query });
+  },
+
+  getTeamMember: (userId: string) => request<ApiUserProfile>(`/team/${userId}`, { auth: true }),
+
   updateRole: (userId: string, role: ApiTeamRole) => request<ApiUserProfile>(`/team/${userId}/role`, { method: "PATCH", body: { role }, auth: true }),
+
+  listNotes: (userId: string) => request<ApiTeamNote[]>(`/team/${userId}/notes`, { auth: true }),
+
+  createNote: (userId: string, text: string) =>
+    request<ApiTeamNote>(`/team/${userId}/notes`, { method: "POST", body: { text }, auth: true }),
+
+  listAlertRules: (userId: string) => request<ApiPersonAlertRule[]>(`/team/${userId}/alert-rules`, { auth: true }),
+
+  createAlertRule: (userId: string, payload: { category: string; severity: ApiAlertSeverity; notify_email: string }) =>
+    request<ApiPersonAlertRule>(`/team/${userId}/alert-rules`, { method: "POST", body: payload, auth: true }),
+
+  deleteAlertRule: (userId: string, ruleId: string) =>
+    request<void>(`/team/${userId}/alert-rules/${ruleId}`, { method: "DELETE", auth: true }),
 
   createInvite: (payload: { email?: string; role: ApiTeamRole }) => request<ApiInvite>("/invites", { method: "POST", body: payload, auth: true }),
 

@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { useApp } from "@/lib/store";
 import { timeAgo } from "@/lib/format";
-import { Send, Link2, RotateCcw, XCircle, Copy, ChevronRight, Loader2 } from "lucide-react";
+import { Send, Link2, RotateCcw, XCircle, Copy, ChevronRight, Loader2, Search } from "lucide-react";
 import type { InviteStatus, TeamRole } from "@/lib/types";
 import { apiClient, ApiError, type ApiInvite, type ApiTeamRole, type ApiUserProfile } from "@/lib/apiClient";
 
@@ -48,6 +48,10 @@ export default function TeamPage() {
   const [realLoading, setRealLoading] = useState(false);
   const [realError, setRealError] = useState("");
   const [realBusy, setRealBusy] = useState(false);
+  const [inviteSearch, setInviteSearch] = useState("");
+  const [teamSearch, setTeamSearch] = useState("");
+  const [selectedInviteTokens, setSelectedInviteTokens] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const refreshReal = useCallback(async () => {
     setRealLoading(true);
@@ -126,6 +130,53 @@ export default function TeamPage() {
     setCopied(link);
     window.setTimeout(() => setCopied(""), 1800);
   }
+
+  function toggleInviteSelected(token: string) {
+    setSelectedInviteTokens((prev) => {
+      const next = new Set(prev);
+      if (next.has(token)) next.delete(token);
+      else next.add(token);
+      return next;
+    });
+  }
+
+  async function bulkResendSelected() {
+    setBulkBusy(true);
+    try {
+      for (const token of selectedInviteTokens) await apiClient.resendInvite(token);
+      setSelectedInviteTokens(new Set());
+      await refreshReal();
+    } catch (err) {
+      setRealError(err instanceof ApiError ? err.message : "Could not resend the selected invites.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function bulkCancelSelected() {
+    setBulkBusy(true);
+    try {
+      for (const token of selectedInviteTokens) await apiClient.cancelInvite(token);
+      setSelectedInviteTokens(new Set());
+      await refreshReal();
+    } catch (err) {
+      setRealError(err instanceof ApiError ? err.message : "Could not cancel the selected invites.");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  const filteredRealInvites = realInvites.filter((inv) => {
+    const q = inviteSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (inv.email ?? "open invite link").toLowerCase().includes(q) || inv.status.toLowerCase().includes(q);
+  });
+
+  const filteredRealTeam = realTeam.filter((u) => {
+    const q = teamSearch.trim().toLowerCase();
+    if (!q) return true;
+    return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.job_title ?? "").toLowerCase().includes(q);
+  });
 
   // --- Mock mode (everything else - RAGs/etc have no backend yet) ---
   const employees = users.filter((u) => u.role === "employee" && u.orgId === currentUser?.orgId);
@@ -207,12 +258,47 @@ export default function TeamPage() {
       <Card className="mb-6">
         <CardHeader>
           <h2 className="text-sm font-semibold text-slate-800">Invite log</h2>
-          {isRealSession && realLoading && <Loader2 size={14} className="animate-spin text-slate-400" />}
+          <div className="flex items-center gap-2">
+            {isRealSession && (
+              <div className="relative w-52">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={inviteSearch}
+                  onChange={(e) => setInviteSearch(e.target.value)}
+                  placeholder="Search invites"
+                  className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                />
+              </div>
+            )}
+            {isRealSession && realLoading && <Loader2 size={14} className="animate-spin text-slate-400" />}
+          </div>
         </CardHeader>
-        <div className="divide-y divide-slate-100">
+        {isRealSession && selectedInviteTokens.size > 0 && (
+          <div className="px-5 py-2.5 bg-brand/5 border-b border-slate-100 flex items-center gap-3">
+            <span className="text-xs text-slate-600">{selectedInviteTokens.size} selected</span>
+            <Button size="sm" variant="ghost" onClick={bulkResendSelected} disabled={bulkBusy}>
+              {bulkBusy ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />} Resend selected
+            </Button>
+            <Button size="sm" variant="ghost" onClick={bulkCancelSelected} disabled={bulkBusy} className="text-red-600 hover:bg-red-50">
+              {bulkBusy ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />} Cancel selected
+            </Button>
+            <button onClick={() => setSelectedInviteTokens(new Set())} className="text-xs text-slate-400 hover:text-slate-600 ml-auto">
+              Clear
+            </button>
+          </div>
+        )}
+        <div className={`divide-y divide-slate-100 ${isRealSession ? "max-h-[22.5rem] overflow-y-auto" : ""}`}>
           {isRealSession
-            ? realInvites.map((inv) => (
+            ? filteredRealInvites.map((inv) => (
                 <div key={inv.id} className="px-5 py-3.5 flex items-center gap-3">
+                  {inv.status === "pending" && (
+                    <input
+                      type="checkbox"
+                      checked={selectedInviteTokens.has(inv.token)}
+                      onChange={() => toggleInviteSelected(inv.token)}
+                      className="shrink-0"
+                    />
+                  )}
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-slate-800 truncate">{inv.email ?? "Open invite link"}</p>
                     <p className="text-xs text-slate-400">Expires {new Date(inv.expires_at).toLocaleDateString("en-GB")}</p>
@@ -257,20 +343,35 @@ export default function TeamPage() {
                   )}
                 </div>
               ))}
-          {(isRealSession ? realInvites : invites).length === 0 && <p className="px-5 py-6 text-sm text-slate-400 text-center">No invites sent yet.</p>}
+          {(isRealSession ? filteredRealInvites : invites).length === 0 && (
+            <p className="px-5 py-6 text-sm text-slate-400 text-center">No invites sent yet.</p>
+          )}
         </div>
       </Card>
 
       <Card>
         <CardHeader>
           <h2 className="text-sm font-semibold text-slate-800">Team members</h2>
-          <Badge tone="slate">{memberCount}</Badge>
+          <div className="flex items-center gap-2">
+            {isRealSession && (
+              <div className="relative w-52">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={teamSearch}
+                  onChange={(e) => setTeamSearch(e.target.value)}
+                  placeholder="Search team members"
+                  className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                />
+              </div>
+            )}
+            <Badge tone="slate">{memberCount}</Badge>
+          </div>
         </CardHeader>
-        <div className="divide-y divide-slate-100">
+        <div className={`divide-y divide-slate-100 ${isRealSession ? "max-h-[22.5rem] overflow-y-auto" : ""}`}>
           {isRealSession
-            ? realTeam.map((u) => (
-                <div key={u.id} className="px-5 py-3.5 flex items-center gap-3">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
+            ? filteredRealTeam.map((u) => (
+                <div key={u.id} className="px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors">
+                  <Link href={`/team/${u.id}`} className="flex items-center gap-3 flex-1 min-w-0">
                     <Avatar name={u.name} color="#4f46e5" size={36} />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-slate-800 truncate">{u.name}</p>
@@ -278,9 +379,10 @@ export default function TeamPage() {
                         {u.job_title ?? "Team member"} · {u.email}
                       </p>
                     </div>
-                  </div>
+                  </Link>
                   <Select
                     value={u.team_role}
+                    onClick={(e) => e.stopPropagation()}
                     onChange={(e) => changeRealRole(u.id, e.target.value as ApiTeamRole)}
                     className="!w-auto text-xs py-1.5"
                   >
@@ -291,6 +393,9 @@ export default function TeamPage() {
                     ))}
                   </Select>
                   <Badge tone={u.email_verified ? "green" : "amber"}>{u.email_verified ? "Verified" : "Unverified"}</Badge>
+                  <Link href={`/team/${u.id}`}>
+                    <ChevronRight size={16} className="text-slate-300" />
+                  </Link>
                 </div>
               ))
             : employees.map((u) => {
@@ -327,7 +432,7 @@ export default function TeamPage() {
                   </div>
                 );
               })}
-          {(isRealSession ? realTeam.length === 0 : employees.length === 0) && (
+          {(isRealSession ? filteredRealTeam.length === 0 : employees.length === 0) && (
             <p className="px-5 py-6 text-sm text-slate-400 text-center">No team members yet.</p>
           )}
         </div>
