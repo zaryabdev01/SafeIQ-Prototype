@@ -30,6 +30,8 @@ export interface AppUser {
   allowedContacts: string[]; // user ids this person can reach via the AI agent
   directSignUp?: boolean; // true if they signed up directly rather than via an invite
   status?: UserStatus; // undefined treated as "active" - only archived members carry an explicit value
+  mobile?: string;
+  landline?: string;
   // Client feedback (17/08/2026, gap-analysis §5): a manager can see alert/action
   // summaries without seeing raw conversation content - only a Safeguarding Lead
   // (or the org's Super Admin) can open the full text. Kept as a flag rather than
@@ -382,6 +384,33 @@ export interface Booking {
   notes?: string;
   meetingLink?: string;
   cancelled?: boolean;
+  sourceTouchPointRequestId?: string; // set when this booking resulted from an accepted TouchPointRequest
+}
+
+// Client feedback (18/08/2026, second round): a scheduled-meeting-request
+// workflow distinct from general Calendar bookings. A team member ticks one
+// or more flagged alerts and asks a designated manager (the existing
+// RagAssignment.alertOwnerId - no new "designated manager" concept needed)
+// to discuss them. The manager accepts (confirming a date/time, which
+// creates a real Booking), declines with a reason, or declines with a
+// counter-suggested date/time.
+export type TouchPointStatus = "pending" | "accepted" | "declined";
+
+export interface TouchPointRequest {
+  id: string;
+  orgId: string;
+  requesterId: string;
+  targetManagerId: string;
+  alertCaseIds: string[];
+  status: TouchPointStatus;
+  proposedDate?: string; // yyyy-mm-dd, set on accept
+  proposedTime?: string; // HH:mm, set on accept
+  declineReason?: string;
+  counterDate?: string;
+  counterTime?: string;
+  resultingBookingId?: string;
+  createdAt: string;
+  respondedAt?: string;
 }
 
 export interface LoginHistoryEntry {
@@ -410,4 +439,9 @@ export interface Conversation {
   participantIds: string[];
   label: string;
   isGroup?: boolean;
+  // Client feedback (18/08/2026, second round): a conversation must be
+  // clearly tagged as RAG-related, about a particular alert, or a plain
+  // direct 1:1 (neither field set).
+  relatedRagId?: string;
+  relatedAlertCaseId?: string;
 }

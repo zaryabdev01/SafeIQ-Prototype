@@ -85,7 +85,11 @@ export function Sidebar() {
       </nav>
 
       <div className="p-3 border-t border-white/10 shrink-0">
-        <div className="flex items-center gap-2.5 rounded-lg px-2 py-2 mb-1">
+        <Link
+          href={`/team/${currentUser.id}`}
+          className="flex items-center gap-2.5 rounded-lg px-2 py-2 mb-1 hover:bg-white/5 transition-colors"
+          title="View your own profile"
+        >
           <Avatar name={currentUser.name} color={currentUser.avatarColor} size={32} />
           <div className="min-w-0">
             <p className="text-sm font-medium text-white truncate">{currentUser.name}</p>
@@ -95,7 +99,7 @@ export function Sidebar() {
               {currentUser.teamRole === "administrator" && " · Administrator"}
             </p>
           </div>
-        </div>
+        </Link>
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-white/5 hover:text-white transition-colors"

@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { useApp } from "@/lib/store";
 import { timeAgo } from "@/lib/format";
-import { Send, Link2, RotateCcw, XCircle, Copy, ChevronRight, Loader2, Search } from "lucide-react";
+import { Send, Link2, RotateCcw, XCircle, Copy, ChevronRight, ChevronLeft, Loader2, Search } from "lucide-react";
 import type { InviteStatus, TeamRole } from "@/lib/types";
 import { apiClient, ApiError, type ApiInvite, type ApiTeamRole, type ApiUserProfile } from "@/lib/apiClient";
 
@@ -27,6 +27,56 @@ const statusTone: Record<InviteStatus, "amber" | "green" | "slate"> = {
   cancelled: "slate",
 };
 
+function Pager({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (p: number) => void }) {
+  if (totalPages <= 1) return null;
+  const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
+  return (
+    <div className="px-5 py-3 flex items-center justify-center gap-1 border-t border-slate-100">
+      <button
+        onClick={() => onChange(Math.max(1, page - 1))}
+        disabled={page === 1}
+        className="p-1.5 rounded-md text-slate-400 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
+      >
+        <ChevronLeft size={14} />
+      </button>
+      {pages.map((p) => (
+        <button
+          key={p}
+          onClick={() => onChange(p)}
+          className={`w-7 h-7 text-xs rounded-md font-medium ${p === page ? "bg-brand text-white" : "text-slate-500 hover:bg-slate-100"}`}
+        >
+          {p}
+        </button>
+      ))}
+      <button
+        onClick={() => onChange(Math.min(totalPages, page + 1))}
+        disabled={page === totalPages}
+        className="p-1.5 rounded-md text-slate-400 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
+      >
+        <ChevronRight size={14} />
+      </button>
+    </div>
+  );
+}
+
+function AvatarStack({ people }: { people: { id: string; name: string; avatarColor?: string }[] }) {
+  if (people.length === 0) return <span className="text-xs text-slate-300">-</span>;
+  return (
+    <div className="flex -space-x-2">
+      {people.slice(0, 3).map((p) => (
+        <div key={p.id} title={p.name} className="ring-2 ring-white rounded-full">
+          <Avatar name={p.name} color={p.avatarColor ?? "#4f46e5"} size={24} />
+        </div>
+      ))}
+      {people.length > 3 && (
+        <div className="w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-[10px] font-medium flex items-center justify-center ring-2 ring-white">
+          +{people.length - 3}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TeamPage() {
   const {
     currentUser,
@@ -39,6 +89,7 @@ export default function TeamPage() {
     ragAssignments: allRagAssignments,
     setTeamRole,
     setUserStatus,
+    alertCases,
   } = useApp();
   const [email, setEmail] = useState("");
   const [copied, setCopied] = useState("");
@@ -58,6 +109,11 @@ export default function TeamPage() {
   const [mockTeamSearch, setMockTeamSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
+
+  // --- Mock mode: paginated tables (client feedback, 18/08/2026 - Team page mockup) ---
+  const PAGE_SIZE = 8;
+  const [invitePage, setInvitePage] = useState(1);
+  const [teamPage, setTeamPage] = useState(1);
 
   function toggleEmployeeSelected(userId: string) {
     setSelectedEmployeeIds((prev) => {
@@ -222,6 +278,28 @@ export default function TeamPage() {
     createInvite("Open invite - anyone with this link");
   }
 
+  function liveAlertsFor(userId: string) {
+    return alertCases.filter((c) => c.userId === userId && c.status === "open");
+  }
+
+  function managersFor(userId: string) {
+    const ids = [...new Set(ragAssignments.filter((a) => a.userId === userId).map((a) => a.alertOwnerId).filter((x): x is string => !!x))];
+    return ids.map((id) => users.find((u) => u.id === id)).filter((u): u is NonNullable<typeof u> => !!u);
+  }
+
+  const totalInvitePages = Math.max(1, Math.ceil(invites.length / PAGE_SIZE));
+  const clampedInvitePage = Math.min(invitePage, totalInvitePages);
+  const pagedInvites = invites.slice((clampedInvitePage - 1) * PAGE_SIZE, clampedInvitePage * PAGE_SIZE);
+
+  const totalTeamPages = Math.max(1, Math.ceil(filteredEmployees.length / PAGE_SIZE));
+  const clampedTeamPage = Math.min(teamPage, totalTeamPages);
+  const pagedEmployees = filteredEmployees.slice((clampedTeamPage - 1) * PAGE_SIZE, clampedTeamPage * PAGE_SIZE);
+
+  // "Your profile" mini-summary card - the logged-in person's own RAG/alert/manager snapshot
+  const myRagAssignments = allRagAssignments.filter((a) => a.userId === currentUser?.id);
+  const myLiveAlerts = currentUser ? liveAlertsFor(currentUser.id) : [];
+  const myManagers = currentUser ? managersFor(currentUser.id) : [];
+
   const memberCount = isRealSession ? realTeam.length : employees.length - archivedCount;
   const pendingCount = isRealSession ? realInvites.filter((i) => i.status === "pending").length : invites.filter((i) => i.status === "pending").length;
 
@@ -282,6 +360,42 @@ export default function TeamPage() {
           </CardBody>
         </Card>
       </div>
+
+      {!isRealSession && currentUser && (
+        <Card className="mb-6">
+          <CardHeader>
+            <h2 className="text-sm font-semibold text-slate-800">Your profile</h2>
+          </CardHeader>
+          <CardBody>
+            <div className="flex items-center gap-4">
+              <Avatar name={currentUser.name} color={currentUser.avatarColor} size={44} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-slate-800 truncate">{currentUser.name}</p>
+                <p className="text-xs text-slate-500 truncate">{currentUser.jobTitle}</p>
+              </div>
+              <div className="hidden sm:flex items-center gap-6 pl-4 border-l border-slate-100">
+                <div className="text-center">
+                  <p className="text-xl font-semibold text-slate-900">{myRagAssignments.length}</p>
+                  <p className="text-[11px] text-slate-500">RAG systems</p>
+                </div>
+                <div className="text-center">
+                  <p className={`text-xl font-semibold ${myLiveAlerts.length > 0 ? "text-red-600" : "text-slate-900"}`}>{myLiveAlerts.length}</p>
+                  <p className="text-[11px] text-slate-500">Live alerts</p>
+                </div>
+                <div className="text-center">
+                  <div className="flex justify-center mb-1">
+                    <AvatarStack people={myManagers} />
+                  </div>
+                  <p className="text-[11px] text-slate-500">Managers</p>
+                </div>
+              </div>
+              <Link href={`/team/${currentUser.id}`} className="text-xs text-brand font-medium hover:underline whitespace-nowrap">
+                View full profile →
+              </Link>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       <Card className="mb-6">
         <CardHeader>
@@ -348,7 +462,7 @@ export default function TeamPage() {
                   )}
                 </div>
               ))
-            : invites.map((inv) => (
+            : pagedInvites.map((inv) => (
                 <div key={inv.id} className="px-5 py-3.5 flex items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-slate-800 truncate">{inv.email}</p>
@@ -375,6 +489,7 @@ export default function TeamPage() {
             <p className="px-5 py-6 text-sm text-slate-400 text-center">No invites sent yet.</p>
           )}
         </div>
+        {!isRealSession && <Pager page={clampedInvitePage} totalPages={totalInvitePages} onChange={setInvitePage} />}
       </Card>
 
       <Card>
@@ -398,14 +513,20 @@ export default function TeamPage() {
                   <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     value={mockTeamSearch}
-                    onChange={(e) => setMockTeamSearch(e.target.value)}
+                    onChange={(e) => {
+                      setMockTeamSearch(e.target.value);
+                      setTeamPage(1);
+                    }}
                     placeholder="Search team members"
                     className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/30"
                   />
                 </div>
                 {archivedCount > 0 && (
                   <button
-                    onClick={() => setShowArchived((v) => !v)}
+                    onClick={() => {
+                      setShowArchived((v) => !v);
+                      setTeamPage(1);
+                    }}
                     className={`text-xs px-2.5 py-1.5 rounded-lg border whitespace-nowrap ${showArchived ? "border-brand text-brand bg-brand/5" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}
                   >
                     {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
@@ -430,7 +551,7 @@ export default function TeamPage() {
             </button>
           </div>
         )}
-        <div className="divide-y divide-slate-100 max-h-[22.5rem] overflow-y-auto">
+        <div className={`divide-y divide-slate-100 ${isRealSession ? "max-h-[22.5rem] overflow-y-auto" : ""}`}>
           {isRealSession
             ? filteredRealTeam.map((u) => (
                 <div key={u.id} className="px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors">
@@ -461,8 +582,10 @@ export default function TeamPage() {
                   </Link>
                 </div>
               ))
-            : filteredEmployees.map((u) => {
+            : pagedEmployees.map((u) => {
                 const codes = ragAssignments.filter((a) => a.userId === u.id);
+                const liveAlerts = liveAlertsFor(u.id);
+                const managers = managersFor(u.id);
                 const archived = u.status === "archived";
                 return (
                   <div
@@ -497,9 +620,25 @@ export default function TeamPage() {
                         </option>
                       ))}
                     </Select>
-                    <Badge tone="indigo">
-                      {codes.length} RAG{codes.length === 1 ? "" : "s"}
-                    </Badge>
+                    <div className="flex flex-col items-end gap-0.5 w-24 shrink-0">
+                      <Badge tone="indigo">
+                        {codes.length} RAG{codes.length === 1 ? "" : "s"}
+                      </Badge>
+                      <Link href={`/team/${u.id}#assigned-rags`} className="text-[11px] text-brand font-medium hover:underline">
+                        View
+                      </Link>
+                    </div>
+                    <div className="flex flex-col items-end gap-0.5 w-24 shrink-0">
+                      <Badge tone={liveAlerts.length > 0 ? "red" : "slate"}>
+                        {liveAlerts.length} alert{liveAlerts.length === 1 ? "" : "s"}
+                      </Badge>
+                      <Link href={`/team/${u.id}#alerts-touchpoints`} className="text-[11px] text-brand font-medium hover:underline">
+                        View
+                      </Link>
+                    </div>
+                    <div className="w-16 shrink-0 flex justify-center" title="Managers / allocated by">
+                      <AvatarStack people={managers} />
+                    </div>
                     <Link href={`/team/${u.id}`}>
                       <ChevronRight size={16} className="text-slate-300" />
                     </Link>
@@ -510,6 +649,7 @@ export default function TeamPage() {
             <p className="px-5 py-6 text-sm text-slate-400 text-center">No team members yet.</p>
           )}
         </div>
+        {!isRealSession && <Pager page={clampedTeamPage} totalPages={totalTeamPages} onChange={setTeamPage} />}
       </Card>
     </AppShell>
   );

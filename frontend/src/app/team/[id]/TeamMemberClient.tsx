@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
@@ -21,7 +21,6 @@ import {
   Languages,
   Loader2,
   Info,
-  ListChecks,
   MessageSquare,
   ShieldAlert,
   History as HistoryIcon,
@@ -30,8 +29,18 @@ import {
   Check,
   Clock3,
   X,
+  Phone,
+  PhoneCall,
+  CalendarDays,
+  List as ListIcon,
+  ChevronLeft,
+  ChevronRight,
+  Send,
+  Bell,
+  Users as UsersIcon,
+  Plus,
 } from "lucide-react";
-import type { AlertSeverity, TeamRole } from "@/lib/types";
+import type { AlertSeverity, TeamRole, Booking } from "@/lib/types";
 import { AlertCaseThread } from "@/components/AlertCaseThread";
 import { AlertStageStepper, inferAlertStage } from "@/components/AlertStageStepper";
 import { GlobalScopeConfirmModal, RuleHistory, SeverityLegend } from "@/components/AlertRuleGovernance";
@@ -40,6 +49,7 @@ import { severityTone } from "@/components/ui/Badge";
 import { apiClient, ApiError, type ApiAlertSeverity, type ApiPersonAlertRule, type ApiTeamNote, type ApiTeamRole, type ApiUserProfile } from "@/lib/apiClient";
 import type { AlertRuleScope } from "@/lib/types";
 import { canViewConversationContent } from "@/lib/permissions";
+import { toIsoDate } from "@/lib/calendar";
 
 const PRIORITY_ACTION_LABEL: Record<string, string> = {
   low: "Information only",
@@ -54,6 +64,37 @@ const TEAM_ROLE_LABEL: Record<TeamRole, string> = {
   support: "Support",
   administrator: "Administrator",
 };
+
+const WEEK_DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const WEEK_HOURS = Array.from({ length: 9 }, (_, i) => i + 9); // 09:00-17:00
+
+function startOfWeek(d: Date) {
+  const day = (d.getDay() + 6) % 7; // Monday-first
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - day);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
+function addDaysToDate(d: Date, days: number) {
+  const next = new Date(d);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+const BOOKING_COLORS = [
+  "bg-indigo-100 text-indigo-800 border-indigo-200",
+  "bg-emerald-100 text-emerald-800 border-emerald-200",
+  "bg-amber-100 text-amber-800 border-amber-200",
+  "bg-sky-100 text-sky-800 border-sky-200",
+  "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200",
+];
+
+function bookingColor(b: Booking) {
+  let hash = 0;
+  for (const ch of b.title) hash = (hash * 31 + ch.charCodeAt(0)) % BOOKING_COLORS.length;
+  return BOOKING_COLORS[hash];
+}
 
 export function TeamMemberClient({ userId }: { userId: string }) {
   const {
@@ -75,6 +116,16 @@ export function TeamMemberClient({ userId }: { userId: string }) {
     alertCaseMessages,
     actions: allActions,
     updateActionStatus,
+    bookings: allBookings,
+    touchPointRequests: allTouchPointRequests,
+    requestTouchPoint,
+    acceptTouchPoint,
+    declineTouchPoint,
+    proposeNewTouchPointTime,
+    conversations: allConversations,
+    chatMessages: allChatMessages,
+    sendChatMessage,
+    createGroupConversation,
   } = useApp();
 
   const mockUser = users.find((u) => u.id === userId);
@@ -90,6 +141,23 @@ export function TeamMemberClient({ userId }: { userId: string }) {
   const [assignRagId, setAssignRagId] = useState("");
   const [assignOwnerId, setAssignOwnerId] = useState("");
   const [justAssignedCode, setJustAssignedCode] = useState<string | null>(null);
+
+  // --- Client feedback (18/08/2026, second round): Screenshot 1 layout ---
+  const [scheduleView, setScheduleView] = useState<"calendar" | "list">("calendar");
+  const [weekCursor, setWeekCursor] = useState(() => startOfWeek(new Date()));
+  const [alertsListOpen, setAlertsListOpen] = useState(false);
+  const [touchPointsListOpen, setTouchPointsListOpen] = useState(false);
+  const [selectedAlertIds, setSelectedAlertIds] = useState<Set<string>>(new Set());
+  const [requestManagerId, setRequestManagerId] = useState("");
+  const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
+  const [respondMode, setRespondMode] = useState<"accept" | "decline" | "counter">("accept");
+  const [respondDate, setRespondDate] = useState("");
+  const [respondTime, setRespondTime] = useState("10:00");
+  const [respondReason, setRespondReason] = useState("");
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [messageDraft, setMessageDraft] = useState("");
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeTargetId, setComposeTargetId] = useState("");
 
   // --- Real-backend mode (Milestone 4's /team/{id}/notes + /alert-rules - see backend/README.md) ---
   const [realProfile, setRealProfile] = useState<ApiUserProfile | null>(null);
@@ -166,13 +234,8 @@ export function TeamMemberClient({ userId }: { userId: string }) {
 
   const myQuestions = useMemo(() => ragQuestions.filter((q) => q.userId === userId), [ragQuestions, userId]);
   const actionsForUser = useMemo(() => allActions.filter((a) => a.assigneeId === userId), [allActions, userId]);
-  const openActionsForUser = actionsForUser.filter((a) => a.status !== "completed");
   const today = new Date().toISOString().slice(0, 10);
   const canViewContent = canViewConversationContent(currentUser);
-  const lastActivityAt = [...myQuestions, ...flaggedCases]
-    .map((x) => ("askedAt" in x ? x.askedAt : x.createdAt))
-    .sort()
-    .at(-1);
 
   function ragRiskStatus(ragId: string): { tone: "green" | "amber" | "red"; label: string } {
     const casesForRag = flaggedCases.filter((c) => c.ragId === ragId && c.status === "open");
@@ -214,6 +277,105 @@ export function TeamMemberClient({ userId }: { userId: string }) {
     ]),
     ...actionsForOpenRag.map((a) => ({ id: `audit-a-${a.id}`, text: `Action created and assigned to ${mockUser?.name ?? "this person"}`, at: a.createdAt })),
   ].sort((x, y) => (x.at < y.at ? 1 : -1));
+
+  // --- Client feedback (18/08/2026, second round): Screenshot 1 derived data ---
+  const isOwnProfile = currentUser?.id === userId;
+  const myBookings = allBookings.filter((b) => b.withUserId === userId && !b.cancelled);
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDaysToDate(weekCursor, i));
+  function bookingsForCell(day: Date, hour: number) {
+    const iso = toIsoDate(day);
+    return myBookings.filter((b) => b.date === iso && Number(b.time.split(":")[0]) === hour);
+  }
+  const upcomingBookingsList = [...myBookings].filter((b) => b.date >= today).sort((a, b) => (a.date + a.time < b.date + b.time ? -1 : 1));
+
+  const designatedManagers = [...new Set(assignments.map((a) => a.alertOwnerId).filter((x): x is string => !!x))]
+    .map((id) => users.find((u) => u.id === id))
+    .filter((u): u is NonNullable<typeof u> => !!u);
+
+  const upcomingTouchPoints = myBookings
+    .filter((b) => b.sourceTouchPointRequestId && b.date >= today)
+    .sort((a, b) => (a.date + a.time < b.date + b.time ? -1 : 1));
+  const pendingIncoming = allTouchPointRequests.filter((r) => r.targetManagerId === userId && r.status === "pending");
+  const pendingOutgoing = allTouchPointRequests.filter((r) => r.requesterId === userId && r.status === "pending");
+
+  const myConversations = allConversations
+    .filter((c) => c.participantIds.includes(userId))
+    .map((c) => {
+      const msgs = allChatMessages.filter((m) => m.conversationId === c.id).sort((a, b) => (a.sentAt < b.sentAt ? 1 : -1));
+      return { conv: c, lastMessage: msgs[0] };
+    })
+    .sort((a, b) => ((a.lastMessage?.sentAt ?? "") < (b.lastMessage?.sentAt ?? "") ? 1 : -1));
+
+  function conversationTagFor(c: (typeof allConversations)[number]): { label: string; tone: "indigo" | "red" | "slate" } {
+    if (c.relatedRagId) return { label: rags.find((r) => r.id === c.relatedRagId)?.name ?? "RAG", tone: "indigo" };
+    if (c.relatedAlertCaseId) return { label: "Alert", tone: "red" };
+    return { label: "Direct", tone: "slate" };
+  }
+
+  const activeConversation = allConversations.find((c) => c.id === activeConversationId) ?? null;
+  const activeMessages = activeConversationId
+    ? allChatMessages.filter((m) => m.conversationId === activeConversationId).sort((a, b) => (a.sentAt < b.sentAt ? -1 : 1))
+    : [];
+  const activeConversationHidden = !!activeConversation?.relatedAlertCaseId && !canViewContent;
+  const composeEligibleUsers = users.filter((u) => u.orgId === mockUser?.orgId && u.id !== userId);
+
+  function otherParticipantName(c: (typeof allConversations)[number]) {
+    const otherId = c.participantIds.find((id) => id !== userId);
+    return users.find((u) => u.id === otherId)?.name ?? c.label;
+  }
+
+  function toggleAlertSelected(caseId: string) {
+    setSelectedAlertIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(caseId)) next.delete(caseId);
+      else next.add(caseId);
+      return next;
+    });
+  }
+
+  function sendTouchPointRequest() {
+    if (!requestManagerId || selectedAlertIds.size === 0) return;
+    requestTouchPoint(userId, requestManagerId, [...selectedAlertIds]);
+    setSelectedAlertIds(new Set());
+    setRequestManagerId("");
+  }
+
+  function openRespond(requestId: string, mode: "accept" | "decline" | "counter") {
+    setRespondingRequestId(requestId);
+    setRespondMode(mode);
+    setRespondDate(today);
+    setRespondTime("10:00");
+    setRespondReason("");
+  }
+
+  function submitRespond() {
+    if (!respondingRequestId) return;
+    if (respondMode === "accept") acceptTouchPoint(respondingRequestId, respondDate, respondTime);
+    else if (respondMode === "decline") declineTouchPoint(respondingRequestId, respondReason.trim() || "No reason given");
+    else proposeNewTouchPointTime(respondingRequestId, respondDate, respondTime);
+    setRespondingRequestId(null);
+  }
+
+  function openConversationWith(targetId: string) {
+    const existing = allConversations.find(
+      (c) => !c.isGroup && c.participantIds.includes(userId) && c.participantIds.includes(targetId) && c.participantIds.length === 2
+    );
+    if (existing) {
+      setActiveConversationId(existing.id);
+      setComposeOpen(false);
+      return;
+    }
+    const targetName = users.find((u) => u.id === targetId)?.name ?? "New conversation";
+    const newId = createGroupConversation(targetName, [targetId], userId);
+    setActiveConversationId(newId);
+    setComposeOpen(false);
+  }
+
+  function sendMessage() {
+    if (!activeConversationId || !messageDraft.trim()) return;
+    sendChatMessage(activeConversationId, currentUser?.id ?? userId, messageDraft.trim());
+    setMessageDraft("");
+  }
 
   if (!isRealSession && !mockUser) return notFound();
   if (isRealSession && !realLoading && !realProfile && realError) {
@@ -329,14 +491,18 @@ export function TeamMemberClient({ userId }: { userId: string }) {
 
       {isRealSession && realError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-4">{realError}</p>}
 
-      <Card className="mb-6">
-        <CardBody className="flex flex-wrap items-center gap-4">
-          <Avatar name={displayName} color={mockUser?.avatarColor ?? "#4f46e5"} size={56} />
-          <div className="flex-1 min-w-[200px]">
-            <p className="text-lg font-semibold text-slate-900">{displayName}</p>
-            <p className="text-sm text-slate-500">{displayEmail}</p>
+      <div className="grid lg:grid-cols-3 gap-6 mb-6">
+        <Card>
+          <CardBody>
+            <div className="flex flex-col items-start gap-3">
+              <Avatar name={displayName} color={mockUser?.avatarColor ?? "#4f46e5"} size={56} />
+              <div>
+                <p className="text-lg font-semibold text-slate-900">{displayName}</p>
+                <p className="text-sm text-slate-500">{displayEmail}</p>
+              </div>
+            </div>
             {isRealSession ? (
-              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              <div className="flex flex-wrap items-center gap-1.5 mt-3">
                 <Badge tone={realProfile?.email_verified ? "green" : "amber"}>{realProfile?.email_verified ? "Verified" : "Unverified"}</Badge>
                 <Badge tone="indigo">KYC {realProfile?.kyc_status}</Badge>
                 {realProfile?.country && (
@@ -352,21 +518,39 @@ export function TeamMemberClient({ userId }: { userId: string }) {
               </div>
             ) : (
               mockUser && (
-                <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                  <Badge tone="indigo">{mockUser.jobTitle}</Badge>
-                  <Badge tone="slate">
-                    <Globe2 size={11} /> {mockUser.country}
-                  </Badge>
-                  <Badge tone="slate">
-                    <Languages size={11} /> {mockUser.language}
-                  </Badge>
-                  <Badge tone={mockUser.twoFactorEnabled ? "green" : "slate"}>2FA {mockUser.twoFactorEnabled ? "on" : "off"}</Badge>
-                  <Badge tone={mockUser.ipLockEnabled ? "green" : "slate"}>IP lock {mockUser.ipLockEnabled ? "on" : "off"}</Badge>
-                </div>
+                <>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                    <Badge tone="indigo">{mockUser.jobTitle}</Badge>
+                    <Badge tone="slate">
+                      <Globe2 size={11} /> {mockUser.country}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                    <Badge tone="slate">
+                      <Languages size={11} /> {mockUser.language}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                    <Badge tone={mockUser.twoFactorEnabled ? "green" : "slate"}>2FA {mockUser.twoFactorEnabled ? "on" : "off"}</Badge>
+                    <Badge tone={mockUser.ipLockEnabled ? "green" : "slate"}>IP lock {mockUser.ipLockEnabled ? "on" : "off"}</Badge>
+                  </div>
+                  <div className="mt-4 space-y-2 text-sm text-slate-600 w-full">
+                    {mockUser.mobile && (
+                      <div className="flex items-center gap-2.5">
+                        <Phone size={14} className="text-slate-400" /> {mockUser.mobile}
+                      </div>
+                    )}
+                    {mockUser.landline && (
+                      <div className="flex items-center gap-2.5">
+                        <PhoneCall size={14} className="text-slate-400" /> {mockUser.landline}
+                      </div>
+                    )}
+                  </div>
+                </>
               )
             )}
             {!isRealSuperAdmin && (
-              <div className="mt-3 flex items-center gap-2">
+              <div className="mt-4 flex items-center gap-2">
                 <span className="text-xs text-slate-500">Account type</span>
                 <Select value={displayRole} onChange={(e) => changeRole(e.target.value as TeamRole)} className="!w-auto text-xs py-1.5">
                   {(Object.keys(TEAM_ROLE_LABEL) as TeamRole[]).map((r) => (
@@ -377,41 +561,264 @@ export function TeamMemberClient({ userId }: { userId: string }) {
                 </Select>
               </div>
             )}
-          </div>
-          {!isRealSession && (
-            <div className="text-xs text-slate-500 text-right space-y-0.5">
-              {lastLogin && <p>Last seen {timeAgo(lastLogin.loginAt)}</p>}
-              {lastLogin && <p>{lastLogin.location}</p>}
-              <p>
-                {assignments.length} RAG{assignments.length === 1 ? "" : "s"} assigned · {openActionsForUser.length} open item
-                {openActionsForUser.length === 1 ? "" : "s"}
-                {lastActivityAt && ` · last activity ${timeAgo(lastActivityAt)}`}
+            {!isRealSession && lastLogin && (
+              <p className="text-xs text-slate-400 mt-4">
+                Last seen {timeAgo(lastLogin.loginAt)} · {lastLogin.location}
               </p>
-            </div>
-          )}
-        </CardBody>
-      </Card>
+            )}
+          </CardBody>
+        </Card>
+
+        {!isRealSession && (
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                <CalendarDays size={15} /> Scheduled activities
+              </h2>
+              <div className="flex items-center rounded-lg border border-slate-200 p-0.5 text-xs">
+                <button
+                  onClick={() => setScheduleView("calendar")}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-colors ${scheduleView === "calendar" ? "bg-brand text-white" : "text-slate-500 hover:bg-slate-50"}`}
+                >
+                  <CalendarDays size={12} /> Calendar view
+                </button>
+                <button
+                  onClick={() => setScheduleView("list")}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md transition-colors ${scheduleView === "list" ? "bg-brand text-white" : "text-slate-500 hover:bg-slate-50"}`}
+                >
+                  <ListIcon size={12} /> List view
+                </button>
+              </div>
+            </CardHeader>
+            <CardBody>
+              <div className="flex items-center gap-2 mb-3">
+                <button onClick={() => setWeekCursor((c) => addDaysToDate(c, -7))} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500">
+                  <ChevronLeft size={15} />
+                </button>
+                <p className="text-sm font-medium text-slate-700 w-40">
+                  {weekCursor.toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
+                </p>
+                <button onClick={() => setWeekCursor((c) => addDaysToDate(c, 7))} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500">
+                  <ChevronRight size={15} />
+                </button>
+                <Button size="sm" variant="outline" className="ml-auto" onClick={() => setWeekCursor(startOfWeek(new Date()))}>
+                  Today
+                </Button>
+              </div>
+
+              {scheduleView === "calendar" ? (
+                <div className="overflow-x-auto">
+                  <div className="grid grid-cols-8 gap-px bg-slate-100 rounded-lg overflow-hidden min-w-[640px]">
+                    <div className="bg-white" />
+                    {weekDays.map((d) => (
+                      <div key={d.toISOString()} className="bg-white text-center py-1.5">
+                        <p className="text-[11px] text-slate-400">{WEEK_DAY_LABELS[(d.getDay() + 6) % 7]}</p>
+                        <p className={`text-xs font-medium ${toIsoDate(d) === today ? "text-brand" : "text-slate-700"}`}>{d.getDate()}</p>
+                      </div>
+                    ))}
+                    {WEEK_HOURS.map((hour) => (
+                      <Fragment key={hour}>
+                        <div className="bg-white text-[10px] text-slate-400 text-right pr-1.5 pt-1">
+                          {String(hour).padStart(2, "0")}:00
+                        </div>
+                        {weekDays.map((d) => (
+                          <div key={`${d.toISOString()}-${hour}`} className="bg-white min-h-[2.5rem] p-0.5 space-y-0.5">
+                            {bookingsForCell(d, hour).map((b) => (
+                              <div key={b.id} className={`text-[10px] leading-tight rounded border px-1 py-0.5 ${bookingColor(b)}`} title={b.title}>
+                                <p className="font-medium truncate">{b.time}</p>
+                                <p className="truncate">{b.title}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {upcomingBookingsList.map((b) => (
+                    <div key={b.id} className="py-2.5 flex items-center gap-3">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${bookingColor(b).split(" ")[0].replace("100", "500")}`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-slate-800 truncate">{b.title}</p>
+                        <p className="text-xs text-slate-400">
+                          {b.date} · {b.time}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  {upcomingBookingsList.length === 0 && <p className="text-sm text-slate-400 text-center py-8">Nothing scheduled.</p>}
+                </div>
+              )}
+            </CardBody>
+          </Card>
+        )}
+      </div>
 
       {!isRealSession && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {[
-            { label: "Assigned RAGs", value: assignments.length, icon: BrainCircuit, tone: "text-brand bg-indigo-50" },
-            { label: "Conversations", value: myQuestions.length, icon: MessageSquare, tone: "text-teal-600 bg-teal-50" },
-            { label: "Alerts", value: flaggedCases.length, icon: ShieldAlert, tone: "text-red-600 bg-red-50" },
-            { label: "Open actions", value: openActionsForUser.length, icon: ListChecks, tone: "text-indigo-600 bg-indigo-50" },
-          ].map((s) => (
-            <Card key={s.label}>
-              <CardBody className="flex items-center gap-3">
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${s.tone}`}>
-                  <s.icon size={16} />
+        <div id="alerts-touchpoints" className="grid sm:grid-cols-3 gap-4 mb-6">
+          <Card>
+            <CardBody>
+              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 mb-3">
+                <UsersIcon size={14} /> RAGs
+              </p>
+              <p className="text-3xl font-semibold text-slate-900">{assignments.length}</p>
+              <p className="text-xs text-slate-500 mt-1">RAG systems allocated</p>
+              <a
+                href="#assigned-rags"
+                className="text-xs text-brand font-medium hover:underline mt-3 inline-block"
+                onClick={() => document.getElementById("assigned-rags")?.scrollIntoView({ behavior: "smooth" })}
+              >
+                View all RAGs →
+              </a>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardBody>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
+                  <Bell size={14} /> Touch Points
+                </p>
+                {(pendingIncoming.length > 0 || pendingOutgoing.length > 0) && <Badge tone="amber">{pendingIncoming.length + pendingOutgoing.length} pending</Badge>}
+              </div>
+              <p className="text-3xl font-semibold text-slate-900">{upcomingTouchPoints.length}</p>
+              <p className="text-xs text-slate-500 mt-1">Upcoming, agreed meetings</p>
+              <button onClick={() => setTouchPointsListOpen((v) => !v)} className="text-xs text-brand font-medium hover:underline mt-3">
+                {touchPointsListOpen ? "Hide" : "View all touch points →"}
+              </button>
+              {touchPointsListOpen && (
+                <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+                  {upcomingTouchPoints.map((b) => (
+                    <div key={b.id} className="text-xs bg-slate-50 rounded-lg px-2.5 py-2">
+                      <p className="font-medium text-slate-700">{b.title}</p>
+                      <p className="text-slate-400">
+                        {b.date} · {b.time}
+                      </p>
+                    </div>
+                  ))}
+                  {isOwnProfile &&
+                    pendingIncoming.map((r) => (
+                      <div key={r.id} className="text-xs bg-amber-50 rounded-lg px-2.5 py-2 space-y-1.5">
+                        <p className="font-medium text-amber-800">
+                          Request from {users.find((u) => u.id === r.requesterId)?.name ?? "someone"} - {r.alertCaseIds.length} alert
+                          {r.alertCaseIds.length === 1 ? "" : "s"}
+                        </p>
+                        {respondingRequestId === r.id ? (
+                          <div className="space-y-1.5">
+                            <div className="flex gap-1">
+                              {(["accept", "decline", "counter"] as const).map((m) => (
+                                <button
+                                  key={m}
+                                  onClick={() => setRespondMode(m)}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] ${respondMode === m ? "bg-brand text-white" : "bg-white border border-slate-200"}`}
+                                >
+                                  {m === "accept" ? "Accept" : m === "decline" ? "Decline" : "Suggest new time"}
+                                </button>
+                              ))}
+                            </div>
+                            {respondMode === "decline" ? (
+                              <input
+                                value={respondReason}
+                                onChange={(e) => setRespondReason(e.target.value)}
+                                placeholder="Reason..."
+                                className="w-full text-[11px] rounded border border-slate-200 px-1.5 py-1"
+                              />
+                            ) : (
+                              <div className="flex gap-1">
+                                <input type="date" value={respondDate} onChange={(e) => setRespondDate(e.target.value)} className="flex-1 text-[11px] rounded border border-slate-200 px-1.5 py-1" />
+                                <input type="time" value={respondTime} onChange={(e) => setRespondTime(e.target.value)} className="flex-1 text-[11px] rounded border border-slate-200 px-1.5 py-1" />
+                              </div>
+                            )}
+                            <div className="flex gap-1.5">
+                              <Button size="sm" onClick={submitRespond} className="!py-1 !text-[11px]">
+                                Confirm
+                              </Button>
+                              <button onClick={() => setRespondingRequestId(null)} className="text-[11px] text-slate-400">
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => openRespond(r.id, "accept")} className="text-[11px] text-brand hover:underline">
+                            Respond
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  {pendingOutgoing.map((r) => (
+                    <div key={r.id} className="text-xs bg-slate-50 rounded-lg px-2.5 py-2">
+                      <p className="text-slate-500">
+                        Awaiting response from {users.find((u) => u.id === r.targetManagerId)?.name ?? "manager"}
+                      </p>
+                    </div>
+                  ))}
+                  {upcomingTouchPoints.length === 0 && pendingIncoming.length === 0 && pendingOutgoing.length === 0 && (
+                    <p className="text-xs text-slate-400 text-center py-2">No touch points yet.</p>
+                  )}
                 </div>
-                <div>
-                  <p className="text-lg font-semibold text-slate-900 leading-none">{s.value}</p>
-                  <p className="text-xs text-slate-500 mt-1">{s.label}</p>
+              )}
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardBody>
+              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 mb-3">
+                <ShieldAlert size={14} /> Alerts
+              </p>
+              <p className="text-3xl font-semibold text-slate-900">{flaggedCases.length}</p>
+              <p className="text-xs text-slate-500 mt-1">Concerns or keywords flagged</p>
+              <button onClick={() => setAlertsListOpen((v) => !v)} className="text-xs text-brand font-medium hover:underline mt-3">
+                {alertsListOpen ? "Hide" : "View all alerts →"}
+              </button>
+              {alertsListOpen && (
+                <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+                  {flaggedCases.map((c) => {
+                    const rag = rags.find((r) => r.id === c.ragId);
+                    return (
+                      <label key={c.id} className="flex items-start gap-2 text-xs bg-slate-50 rounded-lg px-2.5 py-2 cursor-pointer">
+                        <input type="checkbox" checked={selectedAlertIds.has(c.id)} onChange={() => toggleAlertSelected(c.id)} className="mt-0.5" />
+                        <span className="flex-1">
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setOpenRagId(c.ragId);
+                              setRecordTab("alerts");
+                              document.getElementById("assigned-rags")?.scrollIntoView({ behavior: "smooth" });
+                            }}
+                            className="text-brand font-medium hover:underline"
+                          >
+                            {rag?.name ?? "Unknown RAG"}
+                          </button>
+                          <span className="text-slate-500"> - &ldquo;{c.keyword}&rdquo;</span>
+                          <Badge tone={severityTone(c.severity)} className="ml-1.5">
+                            {c.severity}
+                          </Badge>
+                        </span>
+                      </label>
+                    );
+                  })}
+                  {flaggedCases.length === 0 && <p className="text-xs text-slate-400 text-center py-2">No alerts flagged.</p>}
+                  {designatedManagers.length > 0 && (
+                    <div className="flex gap-1.5 pt-1">
+                      <Select value={requestManagerId} onChange={(e) => setRequestManagerId(e.target.value)} className="!w-auto text-[11px] py-1">
+                        <option value="">Request touch point with...</option>
+                        {designatedManagers.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </Select>
+                      <Button size="sm" className="!py-1 !text-[11px]" onClick={sendTouchPointRequest} disabled={!requestManagerId || selectedAlertIds.size === 0}>
+                        Send
+                      </Button>
+                    </div>
+                  )}
                 </div>
-              </CardBody>
-            </Card>
-          ))}
+              )}
+            </CardBody>
+          </Card>
         </div>
       )}
 
@@ -517,7 +924,7 @@ export function TeamMemberClient({ userId }: { userId: string }) {
         </Card>
       ) : (
         <>
-          <Card className="mb-6">
+          <Card className="mb-6" id="assigned-rags">
             <CardHeader>
               <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
                 <BrainCircuit size={15} /> Assigned RAG systems
@@ -721,6 +1128,105 @@ export function TeamMemberClient({ userId }: { userId: string }) {
             </Card>
           )}
         </>
+      )}
+
+      {!isRealSession && (
+        <Card className="mt-6">
+          <CardHeader>
+            <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+              <MessageSquare size={15} /> Communications
+            </h2>
+            <Button size="sm" variant="outline" onClick={() => setComposeOpen((v) => !v)}>
+              <Plus size={13} /> New message
+            </Button>
+          </CardHeader>
+          {composeOpen && (
+            <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
+              <Select value={composeTargetId} onChange={(e) => setComposeTargetId(e.target.value)} className="!w-auto text-xs py-1.5">
+                <option value="">Choose a person...</option>
+                {composeEligibleUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </Select>
+              <Button size="sm" onClick={() => composeTargetId && openConversationWith(composeTargetId)} disabled={!composeTargetId}>
+                Start
+              </Button>
+            </div>
+          )}
+          <div className="grid md:grid-cols-3 min-h-[22rem]">
+            <div className="border-r border-slate-100 divide-y divide-slate-100 overflow-y-auto max-h-[26rem]">
+              {myConversations.map(({ conv, lastMessage }) => {
+                const tag = conversationTagFor(conv);
+                return (
+                  <button
+                    key={conv.id}
+                    onClick={() => setActiveConversationId(conv.id)}
+                    className={`w-full text-left px-4 py-3 hover:bg-slate-50 ${activeConversationId === conv.id ? "bg-indigo-50/60" : ""}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-slate-800 truncate">{otherParticipantName(conv)}</p>
+                      <Badge tone={tag.tone}>{tag.label}</Badge>
+                    </div>
+                    {lastMessage && (
+                      <p className="text-xs text-slate-400 truncate mt-1">
+                        {lastMessage.text} · {timeAgo(lastMessage.sentAt)}
+                      </p>
+                    )}
+                  </button>
+                );
+              })}
+              {myConversations.length === 0 && <p className="text-sm text-slate-400 text-center py-8 px-4">No conversations yet.</p>}
+            </div>
+            <div className="md:col-span-2 flex flex-col">
+              {activeConversation ? (
+                <>
+                  <div className="px-4 py-3 border-b border-slate-100">
+                    <p className="text-sm font-semibold text-slate-800">{otherParticipantName(activeConversation)}</p>
+                    <Badge tone={conversationTagFor(activeConversation).tone}>{conversationTagFor(activeConversation).label}</Badge>
+                  </div>
+                  <div className="flex-1 p-4 space-y-3 overflow-y-auto max-h-[20rem]">
+                    {activeConversationHidden ? (
+                      <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2.5">
+                        <EyeOff size={13} className="shrink-0" /> This conversation is about an alert - full text is hidden by default, only a
+                        Safeguarding Lead can open it.
+                      </div>
+                    ) : (
+                      activeMessages.map((m) => (
+                        <div key={m.id} className={`max-w-[80%] ${m.senderId === userId ? "ml-auto text-right" : ""}`}>
+                          <div className={`inline-block rounded-2xl px-3 py-2 text-sm ${m.senderId === userId ? "bg-brand text-white" : "bg-slate-100 text-slate-700"}`}>
+                            {m.text}
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-0.5">{timeAgo(m.sentAt)}</p>
+                        </div>
+                      ))
+                    )}
+                    {!activeConversationHidden && activeMessages.length === 0 && (
+                      <p className="text-sm text-slate-400 text-center py-8">No messages yet.</p>
+                    )}
+                  </div>
+                  {!activeConversationHidden && (
+                    <div className="p-3 border-t border-slate-100 flex gap-2">
+                      <input
+                        value={messageDraft}
+                        onChange={(e) => setMessageDraft(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                        placeholder="Type a message..."
+                        className="flex-1 text-sm rounded-lg border border-slate-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                      />
+                      <Button onClick={sendMessage} disabled={!messageDraft.trim()}>
+                        <Send size={14} />
+                      </Button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-sm text-slate-400">Select a conversation</div>
+              )}
+            </div>
+          </div>
+        </Card>
       )}
 
       <GlobalScopeConfirmModal

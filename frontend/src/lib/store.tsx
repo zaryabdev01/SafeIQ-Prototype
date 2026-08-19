@@ -36,6 +36,7 @@ import type {
   Conversation,
   UserStatus,
   KeywordScope,
+  TouchPointRequest,
 } from "./types";
 import {
   INTERNAL_ORG_ID,
@@ -59,6 +60,7 @@ import {
   ragQuestions as seedQuestions,
   ragTestResults as seedRagTestResults,
   rags as seedRags,
+  touchPointRequests as seedTouchPointRequests,
   users as seedUsers,
 } from "./mockData";
 import { apiClient, clearApiSession, decodeAccessTokenClaims, getAccessToken, hasApiSession } from "./apiClient";
@@ -118,6 +120,7 @@ interface AppState {
   emergencyEvents: EmergencyEvent[];
   globalAlertRules: GlobalAlertRule[];
   actions: Action[];
+  touchPointRequests: TouchPointRequest[];
 }
 
 function initialState(): AppState {
@@ -157,6 +160,7 @@ function initialState(): AppState {
     emergencyEvents: seedEmergencyEvents,
     globalAlertRules: seedGlobalAlertRules,
     actions: seedActions,
+    touchPointRequests: seedTouchPointRequests,
   };
 }
 
@@ -226,6 +230,11 @@ interface AppContextValue extends AppState {
   createBooking: (b: Omit<Booking, "id" | "orgId">) => void;
   updateBooking: (bookingId: string, data: Partial<Omit<Booking, "id" | "orgId">>) => void;
   cancelBooking: (bookingId: string) => void;
+
+  requestTouchPoint: (requesterId: string, targetManagerId: string, alertCaseIds: string[]) => void;
+  acceptTouchPoint: (requestId: string, date: string, time: string) => void;
+  declineTouchPoint: (requestId: string, reason: string) => void;
+  proposeNewTouchPointTime: (requestId: string, date: string, time: string) => void;
 
   toggle2FA: (userId: string) => void;
   toggleIPLock: (userId: string) => void;
@@ -789,6 +798,68 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, bookings: s.bookings.map((b) => (b.id === bookingId ? { ...b, cancelled: true } : b)) }));
   }, []);
 
+  const requestTouchPoint = useCallback((requesterId: string, targetManagerId: string, alertCaseIds: string[]) => {
+    setState((s) => {
+      const actingUser = s.users.find((u) => u.id === s.currentUserId);
+      const newRequest: TouchPointRequest = {
+        id: id("tp"),
+        orgId: actingUser?.orgId ?? ORG_ID,
+        requesterId,
+        targetManagerId,
+        alertCaseIds,
+        status: "pending",
+        createdAt: nowIso(),
+      };
+      return { ...s, touchPointRequests: [newRequest, ...s.touchPointRequests] };
+    });
+  }, []);
+
+  const acceptTouchPoint = useCallback((requestId: string, date: string, time: string) => {
+    setState((s) => {
+      const request = s.touchPointRequests.find((r) => r.id === requestId);
+      if (!request) return s;
+      const requester = s.users.find((u) => u.id === request.requesterId);
+      const firstCase = s.alertCases.find((c) => c.id === request.alertCaseIds[0]);
+      const newBooking: Booking = {
+        id: id("bk"),
+        orgId: request.orgId,
+        title: `Touch point with ${requester?.name ?? "team member"}`,
+        withUserId: request.requesterId,
+        date,
+        time,
+        ragId: firstCase?.ragId,
+        sourceTouchPointRequestId: request.id,
+      };
+      return {
+        ...s,
+        bookings: [...s.bookings, newBooking],
+        touchPointRequests: s.touchPointRequests.map((r) =>
+          r.id === requestId
+            ? { ...r, status: "accepted", proposedDate: date, proposedTime: time, resultingBookingId: newBooking.id, respondedAt: nowIso() }
+            : r
+        ),
+      };
+    });
+  }, []);
+
+  const declineTouchPoint = useCallback((requestId: string, reason: string) => {
+    setState((s) => ({
+      ...s,
+      touchPointRequests: s.touchPointRequests.map((r) =>
+        r.id === requestId ? { ...r, status: "declined", declineReason: reason, respondedAt: nowIso() } : r
+      ),
+    }));
+  }, []);
+
+  const proposeNewTouchPointTime = useCallback((requestId: string, date: string, time: string) => {
+    setState((s) => ({
+      ...s,
+      touchPointRequests: s.touchPointRequests.map((r) =>
+        r.id === requestId ? { ...r, status: "declined", counterDate: date, counterTime: time, respondedAt: nowIso() } : r
+      ),
+    }));
+  }, []);
+
   const toggle2FA = useCallback((userId: string) => {
     setState((s) => ({ ...s, users: s.users.map((u) => (u.id === userId ? { ...u, twoFactorEnabled: !u.twoFactorEnabled } : u)) }));
   }, []);
@@ -1157,6 +1228,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     createBooking,
     updateBooking,
     cancelBooking,
+    requestTouchPoint,
+    acceptTouchPoint,
+    declineTouchPoint,
+    proposeNewTouchPointTime,
     toggle2FA,
     toggleIPLock,
     addVideo,

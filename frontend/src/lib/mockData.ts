@@ -5,6 +5,7 @@ import type {
   AlertCaseMessage,
   AlertTask,
   AppUser,
+  TouchPointRequest,
   Booking,
   Conversation,
   ChatMessage,
@@ -72,6 +73,8 @@ export const users: AppUser[] = [
     twoFactorEnabled: true,
     ipLockEnabled: false,
     allowedContacts: ["u-admin", "u-tom"],
+    mobile: "+44 7700 900123",
+    landline: "+44 161 987 6543",
     createdAt: "2026-02-03T09:00:00Z",
   },
   {
@@ -105,6 +108,8 @@ export const users: AppUser[] = [
     ipLockEnabled: true,
     allowedContacts: ["u-admin"],
     isSafeguardingLead: true,
+    mobile: "+44 7700 900456",
+    landline: "+44 161 987 1122",
     createdAt: "2026-04-02T09:00:00Z",
   },
   {
@@ -522,6 +527,46 @@ export const bookings: Booking[] = [
     ragId: "rag-safeguarding",
     accessCode: "PP-1123-SG",
   },
+  {
+    id: "bk-4",
+    orgId: ORG_ID,
+    title: "Touch point - family care plan query",
+    withUserId: "u-daniel",
+    date: "2026-12-15",
+    time: "11:00",
+    ragId: "rag-careplans",
+    accessCode: "DO-5567-CP",
+    notes: "Requested to discuss an open alert.",
+    sourceTouchPointRequestId: "tp-1",
+  },
+];
+
+// Client feedback (18/08/2026, second round): touch-point meeting requests -
+// a team member ticks flagged alerts and asks a designated manager
+// (RagAssignment.alertOwnerId) to discuss them.
+export const touchPointRequests: TouchPointRequest[] = [
+  {
+    id: "tp-1",
+    orgId: ORG_ID,
+    requesterId: "u-daniel",
+    targetManagerId: "u-priya",
+    alertCaseIds: ["case-1"],
+    status: "accepted",
+    proposedDate: "2026-12-15",
+    proposedTime: "11:00",
+    resultingBookingId: "bk-4",
+    createdAt: "2026-07-23T09:20:00Z",
+    respondedAt: "2026-07-23T13:00:00Z",
+  },
+  {
+    id: "tp-2",
+    orgId: ORG_ID,
+    requesterId: "u-aisha",
+    targetManagerId: "u-priya",
+    alertCaseIds: ["case-2"],
+    status: "pending",
+    createdAt: "2026-07-24T08:10:00Z",
+  },
 ];
 
 export const loginHistory: LoginHistoryEntry[] = [
@@ -535,14 +580,16 @@ export const loginHistory: LoginHistoryEntry[] = [
 
 export const conversations: Conversation[] = [
   { id: "conv-admin-aisha", participantIds: ["u-admin", "u-aisha"], label: "Aisha Khan" },
-  { id: "conv-admin-tom", participantIds: ["u-admin", "u-tom"], label: "Tom Green" },
+  { id: "conv-admin-tom", participantIds: ["u-admin", "u-tom"], label: "Tom Green", relatedRagId: "rag-healthsafety" },
   { id: "conv-aisha-tom", participantIds: ["u-aisha", "u-tom"], label: "Tom Green" },
+  { id: "conv-admin-daniel", participantIds: ["u-admin", "u-daniel"], label: "Daniel Osei", relatedAlertCaseId: "case-1" },
 ];
 
 export const chatMessages: ChatMessage[] = [
   { id: "m-1", conversationId: "conv-admin-aisha", senderId: "u-aisha", kind: "text", text: "Morning - all quiet on shift, checking in as scheduled.", sentAt: "2026-07-23T06:02:00Z" },
   { id: "m-2", conversationId: "conv-admin-aisha", senderId: "u-admin", kind: "text", text: "Received, thanks Aisha. Ping me if anything changes with Mrs Whitfield.", sentAt: "2026-07-23T06:05:00Z" },
   { id: "m-3", conversationId: "conv-admin-tom", senderId: "u-tom", kind: "text", text: "Flagged the hoist issue in room 4 via the Health & Safety RAG.", sentAt: "2026-07-23T07:46:00Z" },
+  { id: "m-4", conversationId: "conv-admin-daniel", senderId: "u-daniel", kind: "text", text: "Mrs. Whitfield's family are asking why her care plan changed without notice, what do I tell them?", sentAt: "2026-07-23T09:05:00Z" },
 ];
 
 export const alertCases: AlertCase[] = [
