@@ -190,8 +190,12 @@ interface AppContextValue extends AppState {
 
   updateOrganisation: (orgId: string, data: { name: string; sector: string }) => void;
 
-  createRag: (name: string, accessPassword: string, category: string, description: string) => Rag;
+  createRag: (name: string, accessPassword: string, category: string, description: string, scope?: "global" | "team") => Rag;
   publishRag: (ragId: string) => void;
+  updateRagSettings: (
+    ragId: string,
+    updates: Partial<Pick<Rag, "enableConversationHistory" | "allowFileUploads" | "enableFeedbackCollection">>
+  ) => void;
   addDocumentToRag: (
     ragId: string,
     doc: { name: string; sizeKb: number; addedBy: string; addedAt: string; note: string; contentType?: ContentType; aiSuggestion?: AiSuggestedMetadata }
@@ -489,7 +493,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, organisations: s.organisations.map((o) => (o.id === orgId ? { ...o, ...data } : o)) }));
   }, []);
 
-  const createRag = useCallback((name: string, accessPassword: string, category: string, description: string) => {
+  const createRag = useCallback((name: string, accessPassword: string, category: string, description: string, scope: "global" | "team" = "team") => {
     let created: Rag | null = null;
     setState((s) => {
       const actingUser = s.users.find((u) => u.id === s.currentUserId);
@@ -507,6 +511,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         category,
         description,
         status: "draft",
+        scope,
+        enableConversationHistory: true,
+        allowFileUploads: true,
+        enableFeedbackCollection: false,
       };
       created = newRag;
       return { ...s, rags: [newRag, ...s.rags] };
@@ -517,6 +525,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const publishRag = useCallback((ragId: string) => {
     setState((s) => ({ ...s, rags: s.rags.map((r) => (r.id === ragId ? { ...r, status: "published" } : r)) }));
   }, []);
+
+  const updateRagSettings = useCallback(
+    (ragId: string, updates: Partial<Pick<Rag, "enableConversationHistory" | "allowFileUploads" | "enableFeedbackCollection">>) => {
+      setState((s) => ({ ...s, rags: s.rags.map((r) => (r.id === ragId ? { ...r, ...updates } : r)) }));
+    },
+    []
+  );
 
   const addDocumentToRag = useCallback((ragId: string, doc: Parameters<AppContextValue["addDocumentToRag"]>[1]) => {
     setState((s) => ({
@@ -1208,6 +1223,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateOrganisation,
     createRag,
     publishRag,
+    updateRagSettings,
     addDocumentToRag,
     updateRagDocumentMetadata,
     toggleAlertKeyword,

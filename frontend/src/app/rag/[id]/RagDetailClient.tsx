@@ -38,11 +38,10 @@ import {
   Building2,
   Globe2,
   Users,
-  ListChecks,
   History as HistoryIcon,
-  ChevronRight,
   BookOpen,
   MessageSquare as MessageSquareIcon,
+  Bell,
 } from "lucide-react";
 import type { AccessLevel, AlertSeverity, ApprovalStatus, ContentType, KeywordScope, RagDocument, TeamRole, TestConfidence, TestFeedback } from "@/lib/types";
 
@@ -84,7 +83,8 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
     ragQuestions,
     alertCases,
     ragTestResults,
-    actions: allActions,
+    bookings,
+    touchPointRequests,
     addDocumentToRag,
     updateRagDocumentMetadata,
     toggleAlertKeyword,
@@ -151,7 +151,6 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
     () => (rag ? ragTestResults.filter((t) => t.ragId === rag.id).sort((a, b) => (a.testedAt < b.testedAt ? 1 : -1)) : []),
     [ragTestResults, rag]
   );
-  const ragActions = useMemo(() => (rag ? allActions.filter((a) => a.ragId === rag.id) : []), [allActions, rag]);
   const isInternalRag = rag?.orgId === INTERNAL_ORG_ID;
   const employees = users.filter((u) => u.role === "employee" && u.orgId === rag?.orgId);
   const availableEmployees = employees.filter((u) => !assignments.some((a) => a.userId === u.id));
@@ -287,24 +286,27 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
   const pendingQs = filteredQuestions.filter((q) => q.status !== "answered").sort((a, b) => (a.askedAt < b.askedAt ? 1 : -1));
   const answeredQs = filteredQuestions.filter((q) => q.status === "answered").sort((a, b) => (a.askedAt < b.askedAt ? 1 : -1));
 
-  const peopleAllocated = assignments.map((a) => {
-    const acts = questions.filter((q) => q.userId === a.userId);
-    const lastActivity = acts.map((q) => q.askedAt).sort().at(-1);
-    return {
-      userId: a.userId,
-      lastActivity,
-      conversations: acts.length,
-      alerts: ragCases.filter((c) => c.userId === a.userId).length,
-      openActions: ragActions.filter((act) => act.assigneeId === a.userId && act.status !== "completed").length,
-    };
-  });
-
   const systemEvents = [
     ...rag.documents.map((d) => ({ id: `doc-${d.id}`, text: `${d.addedBy} added "${d.name}" to Knowledge`, at: d.addedAt })),
     ...rag.alertKeywords.map((k) => ({ id: `kw-${k.id}`, text: `${k.createdBy ?? "Someone"} added risk rule "${k.keyword}"`, at: k.createdAt ?? rag.createdAt })),
     ...assignments.map((a) => ({ id: `assign-${a.userId}`, text: `${userName(a.userId)} was given access to this RAG`, at: a.assignedAt })),
     { id: "created", text: `${userName(rag.createdBy)} created this RAG`, at: rag.createdAt },
   ].sort((x, y) => (x.at < y.at ? 1 : -1));
+
+  // --- Overview card data (client feedback, 18/08/2026 - RAG detail mockup) ---
+  const today = new Date().toISOString().slice(0, 10);
+  const ragCaseIds = new Set(ragCases.map((c) => c.id));
+  const ragTouchPointRequests = touchPointRequests.filter((r) => r.alertCaseIds.some((id) => ragCaseIds.has(id)));
+  const ragTouchPointBookings = bookings.filter((b) => b.ragId === rag.id && b.sourceTouchPointRequestId && !b.cancelled);
+  const completedTouchPoints = ragTouchPointBookings.filter((b) => b.date < today);
+  const upcomingTouchPoints = [...ragTouchPointBookings.filter((b) => b.date >= today)].sort((a, b) => (a.date + a.time < b.date + b.time ? -1 : 1));
+  const overdueThreshold = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(); // pending >3 days is our "overdue" proxy - nothing in the mock tracks an SLA directly
+  const overdueTouchPointRequests = ragTouchPointRequests.filter((r) => r.status === "pending" && r.createdAt < overdueThreshold);
+  const nextDueTouchPoint = upcomingTouchPoints[0];
+
+  const outOfDateDocs = rag.documents.filter((d) => d.reviewDate && d.reviewDate < today).length;
+  const recentQuestions = [...questions].sort((a, b) => (a.askedAt < b.askedAt ? 1 : -1)).slice(0, 3);
+  const openCases = ragCases.filter((c) => c.status === "open").length;
 
   return (
     <AppShell title={rag.name} subtitle={`${rag.category} · Access password: ${"•".repeat(rag.accessPassword.length)}`}>
@@ -365,7 +367,7 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
         )}
 
         {tab === "overview" && rag.status === "published" && (
-          <CardBody className="space-y-5">
+          <CardBody className="space-y-4">
             <div className="flex items-center gap-2">
               <Badge tone="indigo">{rag.category}</Badge>
               <Badge tone="green">
@@ -373,55 +375,167 @@ export function RagDetailClient({ ragId }: { ragId: string }) {
               </Badge>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-              {[
-                { label: "Allocated employees", value: assignments.length, icon: Users, tab: "people" },
-                { label: "Conversations", value: questions.length, icon: MessageSquareIcon, tab: "communications" },
-                { label: "Pending questions", value: questions.filter((q) => q.status !== "answered").length, icon: BellRing, tab: "communications" },
-                { label: "Alerts", value: ragCases.length, icon: ShieldAlert, tab: "communications" },
-                { label: "Open actions", value: ragActions.filter((a) => a.status !== "completed").length, icon: ListChecks, tab: "communications" },
-              ].map((s) => (
-                <button key={s.label} onClick={() => setTab(s.tab)} className="rounded-lg border border-slate-200 px-3 py-3 text-left hover:border-brand transition-colors">
-                  <s.icon size={15} className="text-slate-400 mb-1.5" />
-                  <p className="text-lg font-semibold text-slate-900 leading-none">{s.value}</p>
-                  <p className="text-xs text-slate-500 mt-1">{s.label}</p>
-                </button>
-              ))}
+            <div className="grid lg:grid-cols-3 gap-4">
+              <Card className="lg:col-span-2 !shadow-none border border-slate-200">
+                <CardBody>
+                  <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5 mb-3">
+                    <HistoryIcon size={14} /> Activity feed
+                  </p>
+                  <div className="space-y-2.5 max-h-64 overflow-y-auto">
+                    {systemEvents.slice(0, 8).map((e) => (
+                      <div key={e.id} className="flex items-start gap-2.5 text-sm">
+                        <HistoryIcon size={13} className="text-slate-300 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <p className="text-slate-700">{e.text}</p>
+                          <p className="text-xs text-slate-400">{formatDateTime(e.at)}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {systemEvents.length === 0 && <p className="text-sm text-slate-400 text-center py-6">No activity recorded yet.</p>}
+                  </div>
+                  {systemEvents.length > 0 && (
+                    <button onClick={() => setTab("activity")} className="text-xs text-brand font-medium hover:underline mt-3">
+                      View full activity log →
+                    </button>
+                  )}
+                </CardBody>
+              </Card>
+
+              <Card className="!shadow-none border border-slate-200">
+                <CardBody>
+                  <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5 mb-3">
+                    <Bell size={14} /> Overall touch points
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <p className="text-xl font-semibold text-slate-900">{ragTouchPointRequests.length}</p>
+                      <p className="text-[11px] text-slate-500">Total</p>
+                    </div>
+                    <div>
+                      <p className="text-xl font-semibold text-slate-900">{completedTouchPoints.length}</p>
+                      <p className="text-[11px] text-slate-500">Completed</p>
+                    </div>
+                    <div>
+                      <p className="text-xl font-semibold text-slate-900">{upcomingTouchPoints.length}</p>
+                      <p className="text-[11px] text-slate-500">Upcoming</p>
+                    </div>
+                    <div>
+                      <p className={`text-xl font-semibold ${overdueTouchPointRequests.length > 0 ? "text-red-600" : "text-slate-900"}`}>
+                        {overdueTouchPointRequests.length}
+                      </p>
+                      <p className="text-[11px] text-slate-500">Overdue</p>
+                    </div>
+                  </div>
+                  {nextDueTouchPoint ? (
+                    <div className="rounded-lg bg-indigo-50 text-indigo-700 text-xs px-3 py-2">
+                      Next due: {nextDueTouchPoint.title} · {nextDueTouchPoint.date} {nextDueTouchPoint.time}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400">No upcoming touch points.</p>
+                  )}
+                </CardBody>
+              </Card>
             </div>
 
-            <div>
-              <Label>People allocated to this RAG</Label>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
-                      <th className="py-2 pr-3 font-medium">Person</th>
-                      <th className="py-2 pr-3 font-medium">Last activity</th>
-                      <th className="py-2 pr-3 font-medium">Conversations</th>
-                      <th className="py-2 pr-3 font-medium">Alerts</th>
-                      <th className="py-2 pr-3 font-medium">Open actions</th>
-                      <th className="py-2 pr-3 font-medium"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {peopleAllocated.map((p) => (
-                      <tr key={p.userId}>
-                        <td className="py-2.5 pr-3 text-slate-800">{userName(p.userId)}</td>
-                        <td className="py-2.5 pr-3 text-slate-500">{p.lastActivity ? timeAgo(p.lastActivity) : "No activity yet"}</td>
-                        <td className="py-2.5 pr-3 text-slate-500">{p.conversations}</td>
-                        <td className="py-2.5 pr-3 text-slate-500">{p.alerts}</td>
-                        <td className="py-2.5 pr-3 text-slate-500">{p.openActions}</td>
-                        <td className="py-2.5 pr-3">
-                          <Link href={`/team/${p.userId}`} className="text-brand text-xs font-medium hover:underline flex items-center gap-0.5">
-                            View profile <ChevronRight size={12} />
-                          </Link>
-                        </td>
-                      </tr>
+            <div className="grid lg:grid-cols-2 gap-4">
+              <Card className="!shadow-none border border-slate-200">
+                <CardBody>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                      <ShieldAlert size={14} /> Overall alerts
+                    </p>
+                    <button onClick={() => setTab("communications")} className="text-xs text-brand font-medium hover:underline">
+                      View all →
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xl font-semibold text-slate-900">{ragCases.length}</p>
+                      <p className="text-[11px] text-slate-500">Total alerts</p>
+                    </div>
+                    <div>
+                      <p className={`text-xl font-semibold ${openCases > 0 ? "text-red-600" : "text-slate-900"}`}>{openCases}</p>
+                      <p className="text-[11px] text-slate-500">Still open</p>
+                    </div>
+                  </div>
+                </CardBody>
+              </Card>
+
+              <Card className="!shadow-none border border-slate-200">
+                <CardBody>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                      <MessageSquareIcon size={14} /> Communications
+                    </p>
+                    <button onClick={() => setTab("communications")} className="text-xs text-brand font-medium hover:underline">
+                      View all →
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {recentQuestions.map((q) => (
+                      <div key={q.id} className="text-xs bg-slate-50 rounded-lg px-2.5 py-2">
+                        <p className="text-slate-700 truncate">{q.text}</p>
+                        <p className="text-slate-400">
+                          {userName(q.userId)} · {timeAgo(q.askedAt)}
+                        </p>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
-                {peopleAllocated.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No one is assigned to this RAG yet.</p>}
-              </div>
+                    {recentQuestions.length === 0 && <p className="text-xs text-slate-400 text-center py-3">No conversations yet.</p>}
+                  </div>
+                </CardBody>
+              </Card>
+            </div>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <button onClick={() => setTab("knowledge")} className="text-left">
+                <Card className="!shadow-none border border-slate-200 hover:border-brand transition-colors h-full">
+                  <CardBody>
+                    <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 mb-2">
+                      <BookOpen size={14} /> Knowledge
+                    </p>
+                    <p className="text-2xl font-semibold text-slate-900">{rag.documents.length}</p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      {outOfDateDocs > 0 ? <span className="text-red-600">{outOfDateDocs} out of date</span> : "All up to date"}
+                    </p>
+                  </CardBody>
+                </Card>
+              </button>
+
+              <button onClick={() => setTab("people")} className="text-left">
+                <Card className="!shadow-none border border-slate-200 hover:border-brand transition-colors h-full">
+                  <CardBody>
+                    <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 mb-2">
+                      <Users size={14} /> Team members
+                    </p>
+                    <p className="text-2xl font-semibold text-slate-900">{assignments.length}</p>
+                    <p className="text-[11px] text-slate-500 mt-1">Allocated to this RAG</p>
+                  </CardBody>
+                </Card>
+              </button>
+
+              <button onClick={() => setTab("risk")} className="text-left">
+                <Card className="!shadow-none border border-slate-200 hover:border-brand transition-colors h-full">
+                  <CardBody>
+                    <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 mb-2">
+                      <BellRing size={14} /> Alert criteria
+                    </p>
+                    <p className="text-2xl font-semibold text-slate-900">{rag.alertKeywords.length}</p>
+                    <p className="text-[11px] text-slate-500 mt-1">Keywords configured</p>
+                  </CardBody>
+                </Card>
+              </button>
+
+              <button onClick={() => setTab("settings")} className="text-left">
+                <Card className="!shadow-none border border-slate-200 hover:border-brand transition-colors h-full">
+                  <CardBody>
+                    <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 mb-2">
+                      <FlaskConical size={14} /> Testing, validation & settings
+                    </p>
+                    <p className="text-2xl font-semibold text-slate-900">{testResults.length}</p>
+                    <p className="text-[11px] text-slate-500 mt-1">Test questions run →</p>
+                  </CardBody>
+                </Card>
+              </button>
             </div>
           </CardBody>
         )}

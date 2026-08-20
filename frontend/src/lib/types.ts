@@ -216,6 +216,11 @@ export interface Rag {
   status: "draft" | "published";
   escalationNote?: string; // what should happen when an alert flags on this RAG
   sharedWithOrgIds?: string[]; // orgs a SafeIQ-Internal-authored RAG has been shared with
+  // Client feedback (18/08/2026 - RAG creation wizard mockup):
+  scope?: "global" | "team"; // organisation-wide vs. a specific team; set at creation
+  enableConversationHistory?: boolean;
+  allowFileUploads?: boolean;
+  enableFeedbackCollection?: boolean;
 }
 
 export type AlertCaseStatus = "open" | "closed";
