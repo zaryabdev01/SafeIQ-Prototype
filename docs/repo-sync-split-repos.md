@@ -1,44 +1,57 @@
-# Syncing this monorepo to the split client repos
+# Where backend / frontend code actually lives
 
-This working copy is a **monorepo** (`backend/` + `frontend/` + `docs/`). The client's
-CI/CD and deployments run from two **split repos** hosted in their GitHub org:
+This monorepo (`backend/` + `frontend/` + `docs/`) is **not** the source of truth for
+deployable code any more. The client's CI/CD, Terraform, and deployments run from
+two repos in their GitHub org, and **DevOps commits to those repos directly**:
 
-| Split repo | Fed from | GitHub |
+| Repo | Contains | GitHub |
 |---|---|---|
-| `safeiq-be` | `backend/` | https://github.com/GTG-Enterprises/safeiq-be.git |
-| `safeiq-fe` | `frontend/` | https://github.com/GTG-Enterprises/safeiq-fe.git |
+| `safeiq-be` | the backend (`app/`, `tests/`, `alembic/`, plus `.github/`, Terraform, dev-infra) | https://github.com/GTG-Enterprises/safeiq-be.git |
+| `safeiq-fe` | the frontend | https://github.com/GTG-Enterprises/safeiq-fe.git |
 
-`docs/` is monorepo-only and is **not** copied to either split repo.
+`docs/` stays monorepo-only and is not copied to either.
 
-## Remotes (already configured)
+## Why `git subtree push` does NOT work
 
-```
-git remote add safeiq-be https://github.com/GTG-Enterprises/safeiq-be.git
-git remote add safeiq-fe https://github.com/GTG-Enterprises/safeiq-fe.git
-```
+The split repos were created with a history rewrite, so "the same" commit has a
+different SHA on each side (`safeiq-be`'s `03881f3` == this monorepo's `d0ea3de`).
+`safeiq-be` has since accumulated its own independent history — Terraform IaC,
+GitHub Actions, OIDC, `.env.example` fixes. There is no shared ancestor for
+`git subtree push` to fast-forward from, and a forced push would delete DevOps's
+infra work. **Do not run `git subtree push`.**
 
-`origin` stays pointed at the internal monorepo (`zaryabdev01/SafeIQ-Prototype`).
+## How to ship a backend change
 
-## Push a change out to the split repos
-
-Commit to the monorepo first, then push the relevant subtree(s):
+Work in a real `safeiq-be` checkout:
 
 ```bash
-# after committing on main
-git subtree push --prefix=backend  safeiq-be main
-git subtree push --prefix=frontend safeiq-fe main
+git clone https://github.com/GTG-Enterprises/safeiq-be.git
+cd safeiq-be
+# make the change, then:
+ruff check app tests scripts && mypy app scripts && pytest   # 53/53 must pass
+git add -A && git commit -m "..."
+git push origin main
 ```
 
-Only push the subtree you actually changed. `git subtree push` replays the
-prefix's history onto the target repo's `main`; it does not need a local clone
-of either split repo.
+If a change was prototyped in this monorepo's `backend/` first, move it over as a patch:
 
-## Notes
+```bash
+# from the monorepo, <base>..<tip> being the prototype commit range
+git diff --relative=backend <base> <tip> -- backend/ > /tmp/change.patch
+# in the safeiq-be checkout
+git apply /tmp/change.patch          # or: git apply --exclude=<path> for files that diverged
+```
 
-- The split repos' CI (ruff + mypy + pytest for BE; tsc + lint + build for FE) runs
-  on their `main` after the push — see `docs/devops-cicd-production-guide.md` §5.
-- If `git subtree push` rejects (target `main` moved under us), pull it back in with
-  `git subtree pull --prefix=backend safeiq-be main` (or `--prefix=frontend ... safeiq-fe main`),
-  resolve, then push again.
-- Never `git push safeiq-be main` directly — that would try to push the whole
-  monorepo tree, not the `backend/` subtree.
+## Testing note — `safeiq-be` has no CI
+
+`safeiq-be` commit `f9d7613` removed the GitHub Actions workflow ("not gating
+deploys, not needed right now"). Nothing runs `ruff` / `mypy` / `pytest` on push.
+Until CI is restored, **run the full suite locally before every push** — the
+Postgres-gated integration tests need a real Postgres (`docker compose up -d db`,
+or any local PostgreSQL 15+ on `:5432`); they skip, not fail, without one.
+
+## `origin` (this monorepo)
+
+`origin` = `zaryabdev01/SafeIQ-Prototype`. Still the home for `docs/` and for the
+frontend prototype history. Treat `backend/` here as a prototyping scratch area /
+archival copy, not the deployed code.
