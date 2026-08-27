@@ -48,6 +48,7 @@ class KycStartResponse(BaseModel):
     session_id: str
     status: str
     redirect_url: str | None = None
+    sdk_token: str | None = None  # Sumsub WebSDK access token, when the provider uses one
 
 
 class KycStatusResponse(BaseModel):

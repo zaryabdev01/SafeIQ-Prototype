@@ -1,6 +1,7 @@
 services:
   db:
-    image: postgres:16-alpine
+    # Matches the deployed environment (Aurora PostgreSQL 15) so dev/CI/prod agree.
+    image: postgres:15-alpine
     environment:
       POSTGRES_USER: safeiq
       POSTGRES_PASSWORD: safeiq

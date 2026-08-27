@@ -230,7 +230,10 @@ async def start_kyc(onboarding_token: str) -> KycStartResponse:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Verify your email before starting identity verification")
 
         provider = get_kyc_provider()
-        session = await provider.start_verification(user_id=str(user.id), full_name=user.name, email=user.email)
+        # Composite ref so an async provider's webhook can route back to the right
+        # tenant schema + user (there is no tenant context on the webhook call).
+        external_ref = f"{claims['org_id']}:{user.id}"
+        session = await provider.start_verification(user_id=external_ref, full_name=user.name, email=user.email)
 
         tenant_db.add(KycRecord(user_id=user.id, provider=session.provider, provider_session_id=session.session_id, status=session.status))
         user.kyc_status = session.status
@@ -247,7 +250,11 @@ async def start_kyc(onboarding_token: str) -> KycStartResponse:
         await tenant_db.close()
 
     return KycStartResponse(
-        provider=session.provider, session_id=session.session_id, status=session.status, redirect_url=session.redirect_url
+        provider=session.provider,
+        session_id=session.session_id,
+        status=session.status,
+        redirect_url=session.redirect_url,
+        sdk_token=session.sdk_token,
     )
 
 
