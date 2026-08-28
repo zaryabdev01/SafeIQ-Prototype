@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useApp } from "@/lib/store";
 import { isOrgLevel } from "@/lib/permissions";
 import { Avatar } from "@/components/ui/Avatar";
@@ -12,101 +12,134 @@ import {
   BrainCircuit,
   CalendarDays,
   Settings,
-  ShieldCheck,
-  LogOut,
   Home,
   FolderKanban,
   Globe2,
   ShieldAlert,
+  ShieldCheck,
+  type LucideIcon,
 } from "lucide-react";
 
-const orgNav = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/onboarding", label: "Onboarding", icon: GraduationCap },
-  { href: "/team", label: "Team", icon: Users },
-  { href: "/rag", label: "RAG", icon: BrainCircuit },
-  { href: "/alert-library", label: "Alert Library", icon: ShieldAlert },
-  { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/settings", label: "Settings", icon: Settings },
+type NavItem = { href: string; label: string; icon: LucideIcon };
+type NavGroup = { label: string; items: NavItem[] };
+
+const orgNav: NavGroup[] = [
+  {
+    label: "Workspace",
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/onboarding", label: "Onboarding", icon: GraduationCap },
+      { href: "/team", label: "Team", icon: Users },
+      { href: "/rag", label: "RAG", icon: BrainCircuit },
+    ],
+  },
+  {
+    label: "Operation",
+    items: [
+      { href: "/alert-library", label: "Alert Library", icon: ShieldAlert },
+      { href: "/calendar", label: "Calendar", icon: CalendarDays },
+      { href: "/settings", label: "Settings", icon: Settings },
+    ],
+  },
 ];
 
-const employeeNav = [
-  { href: "/employee", label: "Home", icon: Home },
-  { href: "/onboarding", label: "Onboarding", icon: GraduationCap },
-  { href: "/employee/my-rags", label: "My RAGs", icon: FolderKanban },
-  { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/settings", label: "Settings", icon: Settings },
+const employeeNav: NavGroup[] = [
+  {
+    label: "Workspace",
+    items: [
+      { href: "/employee", label: "Home", icon: Home },
+      { href: "/onboarding", label: "Onboarding", icon: GraduationCap },
+      { href: "/employee/my-rags", label: "My RAGs", icon: FolderKanban },
+    ],
+  },
+  {
+    label: "Operation",
+    items: [
+      { href: "/calendar", label: "Calendar", icon: CalendarDays },
+      { href: "/settings", label: "Settings", icon: Settings },
+    ],
+  },
 ];
 
-const internalNav = [
-  { href: "/internal", label: "Overview", icon: Globe2 },
-  { href: "/rag", label: "RAG", icon: BrainCircuit },
-  { href: "/alerts", label: "Alerts", icon: ShieldCheck },
+const internalNav: NavGroup[] = [
+  {
+    label: "Console",
+    items: [
+      { href: "/internal", label: "Overview", icon: Globe2 },
+      { href: "/rag", label: "RAG", icon: BrainCircuit },
+      { href: "/alerts", label: "Alerts", icon: ShieldCheck },
+    ],
+  },
 ];
+
+function roleLabel(role: string) {
+  if (role === "internal") return "INTERNAL";
+  if (role === "organisation") return "ORGANISATION";
+  return "EMPLOYEE";
+}
 
 export function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
-  const { currentUser, logout } = useApp();
+  const { currentUser } = useApp();
 
   if (!currentUser) return null;
-  const nav = currentUser.role === "internal" ? internalNav : isOrgLevel(currentUser) ? orgNav : employeeNav;
-
-  function handleLogout() {
-    logout();
-    router.push("/login");
-  }
+  const groups = currentUser.role === "internal" ? internalNav : isOrgLevel(currentUser) ? orgNav : employeeNav;
 
   return (
-    <aside className="w-60 shrink-0 bg-slate-900 text-slate-300 flex flex-col h-screen sticky top-0">
-      <div className="h-16 flex items-center gap-2 px-5 border-b border-white/10 shrink-0">
-        <div className="w-8 h-8 rounded-lg bg-brand/90 flex items-center justify-center">
-          <ShieldCheck size={17} className="text-white" />
-        </div>
-        <span className="font-semibold text-white tracking-tight">SafeIQ</span>
-      </div>
-
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
-        {nav.map((item) => {
-          const active = pathname === item.href || (item.href !== "/employee" && item.href !== "/dashboard" && pathname.startsWith(item.href));
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                active ? "bg-white/10 text-white" : "hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <item.icon size={17} />
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <div className="p-3 border-t border-white/10 shrink-0">
-        <Link
-          href={`/team/${currentUser.id}`}
-          className="flex items-center gap-2.5 rounded-lg px-2 py-2 mb-1 hover:bg-white/5 transition-colors"
-          title="View your own profile"
-        >
-          <Avatar name={currentUser.name} color={currentUser.avatarColor} size={32} />
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-white truncate">{currentUser.name}</p>
-            <p className="text-xs text-slate-400 truncate">
-              {currentUser.jobTitle}
-              {currentUser.role === "organisation" && " · Super Admin"}
-              {currentUser.teamRole === "administrator" && " · Administrator"}
-            </p>
+    <aside
+      className="sticky top-0 flex h-screen w-[264px] shrink-0 flex-col gap-1.5 px-4 py-6 text-[#e4e0f1]"
+      style={{ backgroundColor: "var(--shell-bg)" }}
+    >
+      <div className="flex flex-1 flex-col gap-3">
+        {/* Brand */}
+        <div className="flex items-center gap-3 px-2 pb-4 pt-1">
+          <div className="flex size-[34px] items-center justify-center rounded-[10px] bg-brand text-[15px] font-extrabold text-white">S</div>
+          <div className="leading-tight">
+            <p className="text-[16px] font-bold text-white">SafeIQ</p>
+            <p className="text-[10px] font-semibold tracking-[0.14em] text-[#e4e0f1]">{roleLabel(currentUser.role)}</p>
           </div>
-        </Link>
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-white/5 hover:text-white transition-colors"
-        >
-          <LogOut size={16} /> Log out
-        </button>
+        </div>
+        <div className="h-px w-full bg-white/10" />
+
+        {/* Nav groups */}
+        <nav className="flex flex-1 flex-col gap-3 overflow-y-auto">
+          {groups.map((group) => (
+            <div key={group.label} className="flex flex-col gap-1.5">
+              <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#c7becc]">{group.label}</p>
+              {group.items.map((item) => {
+                const active =
+                  pathname === item.href ||
+                  (item.href !== "/employee" && item.href !== "/dashboard" && pathname.startsWith(item.href));
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex h-[38px] items-center gap-3 rounded-[var(--r-control)] px-[11px] text-[13.5px] font-medium transition-colors ${
+                      active ? "bg-brand text-white" : "text-[#e4e0f1] hover:bg-white/5 hover:text-white"
+                    }`}
+                  >
+                    <item.icon size={16} />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
       </div>
+
+      <div className="h-px w-full bg-white/10" />
+      <Link
+        href={`/team/${currentUser.id}`}
+        className="flex items-center gap-3 rounded-[var(--r-control)] px-2 py-2 transition-colors hover:bg-white/5"
+        title="View your own profile"
+      >
+        <Avatar name={currentUser.name} color={currentUser.avatarColor} size={40} className="rounded-[11px]" />
+        <div className="min-w-0">
+          <p className="truncate text-[14px] font-medium text-[#edeaef]">{currentUser.name}</p>
+          <p className="truncate text-[11px] text-white/70">{currentUser.jobTitle}</p>
+        </div>
+      </Link>
     </aside>
   );
 }

@@ -96,7 +96,20 @@ function bookingColor(b: Booking) {
   return BOOKING_COLORS[hash];
 }
 
-export function TeamMemberClient({ userId }: { userId: string }) {
+export function TeamMemberClient({ userId: userIdProp }: { userId: string }) {
+  // Static export only pre-renders a handful of seed user ids (see
+  // generateStaticParams in page.tsx); any other id relies on a CDN fallback
+  // serving one of those static shells for the request. Next's own router
+  // state (useParams()) reflects whatever id was baked into that shell at
+  // build time, not the real URL - it's the served *file's* params, not the
+  // browser's. Reading window.location.pathname directly is the only way to
+  // recover the id the visitor actually requested.
+  const [urlUserId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const match = window.location.pathname.match(/\/team\/([^/]+)\/?$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  });
+  const userId = urlUserId ?? userIdProp;
   const {
     currentUser,
     isRealSession,

@@ -7,33 +7,29 @@ import { isOrgLevel } from "@/lib/permissions";
 import { Button } from "@/components/ui/Button";
 import { Input, Select, FormRow, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
-import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import { Badge } from "@/components/ui/Badge";
+import { SegmentedTabs } from "@/components/ui/SegmentedTabs";
+import { AiSearchPanel } from "@/components/onboarding/AiSearchPanel";
+import { HelpSprintBar } from "@/components/onboarding/HelpSprintBar";
+import { VideoCard, type VideoCardAction } from "@/components/onboarding/VideoCard";
+import { ShareModal } from "@/components/onboarding/ShareModal";
 import { formatDuration, timeAgo } from "@/lib/format";
-import { TEAMS, DEPARTMENTS, LOCATIONS, achievements as ACHIEVEMENTS } from "@/lib/mockData";
+import { TEAMS, DEPARTMENTS, LOCATIONS } from "@/lib/mockData";
 import {
-  Sparkles,
   Play,
-  Mail,
-  Share2,
   Plus,
   Clock,
   Send,
   Loader2,
   BarChart3,
-  Rocket,
   ChevronLeft,
   ChevronRight,
-  MessageCircle,
-  MessagesSquare,
-  Bell,
-  Users,
-  Building2,
-  MapPin,
-  Pencil,
-  UserPlus,
+  LayoutGrid,
+  Headphones,
   History,
+  GraduationCap,
 } from "lucide-react";
-import type { Achievement, HelpAudienceType, HelpCardStatus, HelpCategory, OnboardingVideo, ShareChannel, VideoAudience } from "@/lib/types";
+import type { HelpAudienceType, HelpCardStatus, HelpCategory, OnboardingVideo, ShareChannel, VideoAudience } from "@/lib/types";
 import { apiClient, ApiError, type ApiOnboardingAnalytics, type ApiOnboardingVideo, type ApiUserProfile } from "@/lib/apiClient";
 
 const GRADIENTS = [
@@ -51,8 +47,19 @@ const GRADIENTS = [
 const HELP_CATEGORIES: HelpCategory[] = ["Getting Started", "Employees", "Training", "Reports", "Account", "Billing", "Troubleshooting", "General"];
 const USER_TYPE_LABEL: Record<HelpAudienceType, string> = { org_admin: "Org Admin", manager: "Manager", employee: "Employee", trainer: "Trainer" };
 const STATUS_LABEL: Record<HelpCardStatus, string> = { recommended: "Recommended", next: "Next", new: "New", completed: "Completed", required: "Required" };
-const STATUS_TONE: Record<HelpCardStatus, BadgeTone> = { recommended: "indigo", next: "amber", new: "teal", completed: "green", required: "red" };
+// Maps the mock Help-Hub card status onto VideoCard's Figma badge tones.
+const STATUS_CARD_TONE: Record<HelpCardStatus, "recommended" | "next" | "new" | "required" | "neutral"> = {
+  recommended: "recommended",
+  next: "next",
+  new: "new",
+  completed: "neutral",
+  required: "required",
+};
 const PAGE_SIZE = 9;
+
+function audienceTag(a: VideoAudience): { label: string; tone: "grey" | "violet" } {
+  return { label: a, tone: a === "organisation" ? "violet" : "grey" };
+}
 
 function mapApiVideo(v: ApiOnboardingVideo): OnboardingVideo {
   return {
@@ -229,94 +236,62 @@ export default function OnboardingPage() {
     }
 
     return (
-      <AppShell title="Onboarding" subtitle="Help videos - live from the SafeIQ API">
+      <AppShell title="Onboarding" subtitle="Video library to help you get started with SafeIQ" icon={GraduationCap}>
         {realError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-4">{realError}</p>}
 
-        <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 relative">
-              <Sparkles size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand" />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && runAiSearch()}
-                placeholder="Describe what you want support with... e.g. 'how do I create a RAG'"
-                className="pl-9"
-              />
-            </div>
-            <Button onClick={runAiSearch} disabled={realLoading}>
-              {realLoading ? <Loader2 size={14} className="animate-spin" /> : null} Ask AI &amp; search
-            </Button>
-          </div>
-          <div className="flex flex-wrap items-center gap-3 mt-3">
-            <Select value={audience} onChange={(e) => setAudience(e.target.value as never)} className="!w-auto">
-              <option value="all">All end user types</option>
-              <option value="organisation">Organisation</option>
-              <option value="employee">Employee</option>
-            </Select>
-            <button onClick={() => setViewAll((v) => !v)} className="text-sm font-medium text-brand hover:underline">
-              {viewAll ? "Show default 9" : "View all videos"}
-            </button>
-            {committedQuery && (
-              <button onClick={clearSearch} className="text-xs text-slate-400 hover:text-slate-600">
-                Clear AI suggestions
+        <AiSearchPanel
+          query={query}
+          onQueryChange={setQuery}
+          onSearch={runAiSearch}
+          loading={realLoading}
+          filters={
+            <>
+              <Select value={audience} onChange={(e) => setAudience(e.target.value as never)} className="!w-auto">
+                <option value="all">User type: All</option>
+                <option value="organisation">Organisation</option>
+                <option value="employee">Employee</option>
+              </Select>
+              <button onClick={() => setViewAll((v) => !v)} className="text-sm font-bold text-white hover:underline">
+                {viewAll ? "Show default 9" : "View all"}
               </button>
-            )}
-            {isAdmin && (
-              <>
-                <Button size="sm" variant="ghost" onClick={openAnalytics}>
+              {committedQuery && (
+                <button onClick={clearSearch} className="text-xs text-white/70 hover:text-white">
+                  Clear AI suggestions
+                </button>
+              )}
+            </>
+          }
+          trailing={
+            isAdmin ? (
+              <div className="ml-auto flex items-center gap-2">
+                <button onClick={openAnalytics} className="flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/25">
                   <BarChart3 size={14} /> Analytics
-                </Button>
-                <Button size="sm" variant="outline" className="ml-auto" onClick={() => setAddOpen(true)}>
-                  <Plus size={14} /> Add video (CRM)
-                </Button>
-              </>
-            )}
-          </div>
-          {noMatches && <p className="text-xs text-amber-600 mt-2">No matching videos found - try different wording, or browse all videos below.</p>}
-        </div>
+                </button>
+                <button onClick={() => setAddOpen(true)} className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-brand hover:bg-white/90">
+                  <Plus size={14} /> Add video
+                </button>
+              </div>
+            ) : null
+          }
+        />
+        {noMatches && <p className="-mt-3 mb-4 text-xs text-amber-600">No matching videos found - try different wording, or browse all videos below.</p>}
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map((v) => (
-            <div
+            <VideoCard
               key={v.id}
-              className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white cursor-pointer"
-              onClick={() => openVideoAndTrackView(v)}
-            >
-              <div className={`h-32 bg-gradient-to-br ${v.thumbnailGradient} flex items-center justify-center relative`}>
-                <div className="w-11 h-11 rounded-full bg-white/25 backdrop-blur flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Play size={18} className="text-white fill-white ml-0.5" />
-                </div>
-                <span className="absolute bottom-2 right-2 text-[10px] bg-black/40 text-white px-1.5 py-0.5 rounded flex items-center gap-1">
-                  <Clock size={9} /> {formatDuration(v.durationSeconds)}
-                </span>
-              </div>
-              <div className="p-3.5">
-                <p className="text-sm font-medium text-slate-800 truncate">{v.title}</p>
-                <Badge tone={v.audience === "organisation" ? "indigo" : v.audience === "employee" ? "teal" : "slate"} className="mt-1.5">
-                  {v.audience}
-                </Badge>
-              </div>
-
-              <div className="absolute inset-0 bg-slate-900/85 opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-between text-white">
-                <div>
-                  <p className="text-sm font-semibold mb-1.5">{v.title}</p>
-                  <p className="text-xs text-slate-300 line-clamp-4">{v.description}</p>
-                </div>
-                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={() => setShareVideo(v)}
-                    className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 px-2.5 py-1.5 rounded-lg"
-                  >
-                    <Share2 size={12} /> Share
-                  </button>
-                </div>
-              </div>
-            </div>
+              title={v.title}
+              description={v.description}
+              thumbnailGradient={v.thumbnailGradient}
+              durationLabel={formatDuration(v.durationSeconds)}
+              tags={[audienceTag(v.audience)]}
+              onOpen={() => openVideoAndTrackView(v)}
+              actions={[{ label: "Share", kind: "share", onClick: () => setShareVideo(v) }]}
+            />
           ))}
         </div>
 
-        {visible.length === 0 && !noMatches && <p className="text-sm text-slate-400 text-center py-16">No videos to show for this filter.</p>}
+        {visible.length === 0 && !noMatches && <p className="py-16 text-center text-sm text-slate-400">No videos to show for this filter.</p>}
 
         <Modal open={!!openVideo} onClose={() => setOpenVideo(null)} title={openVideo?.title ?? ""} widthClass="max-w-xl">
           {openVideo && (
@@ -335,11 +310,18 @@ export default function OnboardingPage() {
           )}
         </Modal>
 
-        <Modal open={!!shareVideo} onClose={() => setShareVideo(null)} title="Share video">
-          {shareVideo && (
-            <ShareForm onSubmit={(target) => handleShare(shareVideo, target)} users={realTeamForShare.map((u) => ({ id: u.id, name: u.name, email: u.email }))} />
-          )}
-        </Modal>
+        {shareVideo && (
+          <ShareModal
+            open={!!shareVideo}
+            onClose={() => setShareVideo(null)}
+            videoTitle={shareVideo.title}
+            channels={["email", "inplatform"]}
+            users={realTeamForShare.map((u) => ({ id: u.id, name: u.name, email: u.email }))}
+            onShare={({ channel, target }) =>
+              handleShare(shareVideo, channel === "email" ? { email: target } : { userId: realTeamForShare.find((u) => u.name === target)?.id })
+            }
+          />
+        )}
 
         <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add onboarding video">
           <AddVideoForm onSubmit={handleAddVideo} busy={realBusy} />
@@ -414,7 +396,6 @@ export default function OnboardingPage() {
     .filter((v) => v.sprintPosition !== undefined && (!v.userTypes || v.userTypes.includes(myType)))
     .sort((a, b) => (a.sprintPosition ?? 0) - (b.sprintPosition ?? 0));
   const nextItem = mySprintItems.find((v) => !completedIds.includes(v.id));
-  const sprintProgress = mySprintItems.length > 0 ? Math.round((completedIds.length / mySprintItems.length) * 100) : 0;
 
   const unlockedAchievementIds = new Set<string>();
   if (completedIds.length >= 1) unlockedAchievementIds.add("ach-getting-started");
@@ -494,218 +475,167 @@ export default function OnboardingPage() {
   }
 
   return (
-    <AppShell title="Help & Learning Hub" subtitle="Guided support for your team, personalised to your role">
-      <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1 relative">
-            <Sparkles size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && runAiSearch()}
-              placeholder="What do you need help with? e.g. 'how do I create a RAG'"
-              className="pl-9"
-            />
-          </div>
-          <Button onClick={runAiSearch}>Ask AI &amp; search</Button>
-        </div>
-        {recommendedMatch && (
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-indigo-50 px-3.5 py-2.5">
-            <p className="text-xs text-indigo-700">
-              Recommended: start with <span className="font-medium">&ldquo;{recommendedMatch.title}&rdquo;</span>
-            </p>
-            <Button size="sm" onClick={() => openVideoAndTrackView(recommendedMatch)}>
-              Start recommended
-            </Button>
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-3 mt-3">
-          <Select
-            value={userTypeFilter}
-            onChange={(e) => {
-              setUserTypeFilter(e.target.value as "all" | HelpAudienceType);
-              setPage(0);
-            }}
-            className="!w-auto"
-          >
-            <option value="all">All user types</option>
-            {(Object.keys(USER_TYPE_LABEL) as HelpAudienceType[]).map((t) => (
-              <option key={t} value={t}>
-                {USER_TYPE_LABEL[t]}
-              </option>
-            ))}
-          </Select>
-          <Select
-            value={categoryFilter}
-            onChange={(e) => {
-              setCategoryFilter(e.target.value as "" | HelpCategory);
-              setPage(0);
-            }}
-            className="!w-auto"
-          >
-            <option value="">All categories</option>
-            {HELP_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
-          <button onClick={() => setViewAll((v) => !v)} className="text-sm font-medium text-brand hover:underline">
-            {viewAll ? "Show paginated" : "View all"}
-          </button>
-          {aiSuggestions && (
-            <button onClick={clearSearch} className="text-xs text-slate-400 hover:text-slate-600">
-              Clear AI suggestions
+    <AppShell title="Onboarding" subtitle="Video library to help you get started with SafeIQ" icon={GraduationCap}>
+      <AiSearchPanel
+        query={query}
+        onQueryChange={setQuery}
+        onSearch={runAiSearch}
+        filters={
+          <>
+            <Select
+              value={userTypeFilter}
+              onChange={(e) => {
+                setUserTypeFilter(e.target.value as "all" | HelpAudienceType);
+                setPage(0);
+              }}
+              className="!w-auto"
+            >
+              <option value="all">User type: All</option>
+              {(Object.keys(USER_TYPE_LABEL) as HelpAudienceType[]).map((t) => (
+                <option key={t} value={t}>
+                  {USER_TYPE_LABEL[t]}
+                </option>
+              ))}
+            </Select>
+            <Select
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value as "" | HelpCategory);
+                setPage(0);
+              }}
+              className="!w-auto"
+            >
+              <option value="">Categories: All</option>
+              {HELP_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
+            <button onClick={() => setViewAll((v) => !v)} className="text-sm font-bold text-white hover:underline">
+              {viewAll ? "Show paginated" : "View all"}
             </button>
-          )}
-          {isAdmin && (
+            {aiSuggestions && (
+              <button onClick={clearSearch} className="text-xs text-white/70 hover:text-white">
+                Clear AI suggestions
+              </button>
+            )}
+          </>
+        }
+        trailing={
+          isAdmin ? (
             <div className="ml-auto flex items-center gap-2">
-              <Button size="sm" variant="ghost" onClick={() => setManageOpen(true)}>
+              <button onClick={() => setManageOpen(true)} className="flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/25">
                 <History size={14} /> Access log ({helpAccessLog.length})
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+              </button>
+              <button onClick={() => setAddOpen(true)} className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-brand hover:bg-white/90">
                 <Plus size={14} /> Add help item
-              </Button>
+              </button>
             </div>
-          )}
+          ) : null
+        }
+      />
+      {recommendedMatch && (
+        <div className="-mt-3 mb-6 flex items-center justify-between gap-3 rounded-[var(--r-field)] bg-[var(--brand-tint-2)] px-4 py-2.5">
+          <p className="text-xs text-[var(--brand-dark)]">
+            Recommended: start with <span className="font-semibold">&ldquo;{recommendedMatch.title}&rdquo;</span>
+          </p>
+          <Button size="sm" onClick={() => openVideoAndTrackView(recommendedMatch)}>
+            Start recommended
+          </Button>
         </div>
-        {noMatches && <p className="text-xs text-amber-600 mt-2">No matching help items found - try different wording, or browse below.</p>}
-      </div>
+      )}
+      {noMatches && <p className="-mt-3 mb-4 text-xs text-amber-600">No matching help items found - try different wording, or browse below.</p>}
 
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => {
-            setSupportTab("platform");
+      <div className="mb-6">
+        <SegmentedTabs
+          fluid={false}
+          options={[
+            { value: "platform", label: "Platform Help", icon: LayoutGrid },
+            { value: "general", label: "General Support", icon: Headphones },
+          ]}
+          value={supportTab}
+          onChange={(v) => {
+            setSupportTab(v);
             setPage(0);
           }}
-          className={`text-sm font-medium px-3.5 py-2 rounded-lg ${supportTab === "platform" ? "bg-brand text-white" : "bg-white border border-slate-200 text-slate-600"}`}
-        >
-          Platform Help
-        </button>
-        <button
-          onClick={() => {
-            setSupportTab("general");
-            setPage(0);
-          }}
-          className={`text-sm font-medium px-3.5 py-2 rounded-lg ${supportTab === "general" ? "bg-brand text-white" : "bg-white border border-slate-200 text-slate-600"}`}
-        >
-          General Support
-        </button>
+        />
       </div>
 
       {mySprintItems.length > 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-              <Rocket size={15} className="text-brand" /> Your Help Sprint
-            </p>
-            <span className="text-xs text-slate-500">
-              {completedIds.filter((id) => mySprintItems.some((v) => v.id === id)).length}/{mySprintItems.length} complete
-            </span>
-          </div>
-          <div className="h-2 rounded-full bg-slate-100 overflow-hidden mb-3">
-            <div className="h-full bg-brand transition-all" style={{ width: `${sprintProgress}%` }} />
-          </div>
-          {nextItem ? (
-            <button onClick={() => openVideoAndTrackView(nextItem)} className="text-xs text-brand hover:underline mb-3 block">
-              Next recommended: &ldquo;{nextItem.title}&rdquo; →
-            </button>
-          ) : (
-            <p className="text-xs text-emerald-600 mb-3">Sprint complete - nice work.</p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {ACHIEVEMENTS.map((a: Achievement) => {
-              const unlocked = unlockedAchievementIds.has(a.id);
-              return (
-                <div
-                  key={a.id}
-                  title={a.description}
-                  className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full ${unlocked ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}
-                >
-                  <span>{unlocked ? a.icon : "🔒"}</span> {a.label}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <HelpSprintBar
+          completed={completedIds.filter((id) => mySprintItems.some((v) => v.id === id)).length}
+          total={mySprintItems.length}
+          nextLabel={nextItem?.title ?? null}
+          onNext={() => nextItem && openVideoAndTrackView(nextItem)}
+          categories={[
+            { label: "Getting Started", unlocked: unlockedAchievementIds.has("ach-getting-started") },
+            { label: "Platform Explorer", unlocked: unlockedAchievementIds.has("ach-platform-explorer") },
+            { label: "Organization Ready", unlocked: unlockedAchievementIds.has("ach-org-ready") },
+          ]}
+        />
       )}
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {visible.map((v) => {
           const status = cardStatus(v);
+          const actions: VideoCardAction[] = [{ label: "Share", kind: "share", onClick: () => setShareVideo(v) }];
+          if (isAdmin) {
+            actions.push({
+              label: "Edit",
+              kind: "edit",
+              onClick: () => {
+                setEditingVideoId(v.id);
+                setAddOpen(true);
+              },
+            });
+            actions.push({ label: "Assign", kind: "assign", onClick: () => setAssigningVideo(v) });
+          }
           return (
-            <div
+            <VideoCard
               key={v.id}
-              className="group relative rounded-xl overflow-hidden border border-slate-200 bg-white cursor-pointer"
-              onClick={() => openVideoAndTrackView(v)}
-            >
-              <div className={`h-32 bg-gradient-to-br ${v.thumbnailGradient} flex items-center justify-center relative`}>
-                <div className="w-11 h-11 rounded-full bg-white/25 backdrop-blur flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Play size={18} className="text-white fill-white ml-0.5" />
-                </div>
-                <span className="absolute bottom-2 right-2 text-[10px] bg-black/40 text-white px-1.5 py-0.5 rounded flex items-center gap-1">
-                  <Clock size={9} /> {v.estimatedMinutes ? `${v.estimatedMinutes} min` : formatDuration(v.durationSeconds)}
-                </span>
-                <Badge tone={STATUS_TONE[status]} className="absolute top-2 left-2">
-                  {STATUS_LABEL[status]}
-                </Badge>
-              </div>
-              <div className="p-3.5">
-                <p className="text-sm font-medium text-slate-800 truncate">{v.title}</p>
-                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                  {v.category && <Badge tone="slate">{v.category}</Badge>}
-                  <Badge tone={v.audience === "organisation" ? "indigo" : v.audience === "employee" ? "teal" : "slate"}>{v.audience}</Badge>
-                </div>
-              </div>
-
-              <div className="absolute inset-0 bg-slate-900/85 opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-between text-white">
-                <div>
-                  <p className="text-sm font-semibold mb-1.5">{v.title}</p>
-                  <p className="text-xs text-slate-300 line-clamp-4">{v.description}</p>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => setShareVideo(v)} className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 px-2.5 py-1.5 rounded-lg">
-                    <Share2 size={12} /> Share
-                  </button>
-                  {isAdmin && (
-                    <>
-                      <button
-                        onClick={() => {
-                          setEditingVideoId(v.id);
-                          setAddOpen(true);
-                        }}
-                        className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 px-2.5 py-1.5 rounded-lg"
-                      >
-                        <Pencil size={12} /> Edit
-                      </button>
-                      <button onClick={() => setAssigningVideo(v)} className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 px-2.5 py-1.5 rounded-lg">
-                        <UserPlus size={12} /> Assign
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
+              title={v.title}
+              description={v.description}
+              thumbnailGradient={v.thumbnailGradient}
+              durationLabel={v.estimatedMinutes ? `${v.estimatedMinutes} min` : formatDuration(v.durationSeconds)}
+              statusLabel={STATUS_LABEL[status]}
+              statusTone={STATUS_CARD_TONE[status]}
+              tags={[...(v.category ? [{ label: v.category, tone: "grey" as const }] : []), audienceTag(v.audience)]}
+              onOpen={() => openVideoAndTrackView(v)}
+              actions={actions}
+            />
           );
         })}
       </div>
 
-      {visible.length === 0 && !noMatches && <p className="text-sm text-slate-400 text-center py-16">No help items to show for this filter.</p>}
+      {visible.length === 0 && !noMatches && <p className="py-16 text-center text-sm text-slate-400">No help items to show for this filter.</p>}
 
       {!viewAll && totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3 mt-6">
-          <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={clampedPage === 0} className="p-1.5 rounded-md hover:bg-slate-100 disabled:opacity-30 text-slate-500">
-            <ChevronLeft size={16} />
+        <div className="mt-6 flex items-center justify-end gap-1.5 text-sm">
+          <button
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={clampedPage === 0}
+            className="flex items-center gap-1 rounded-[var(--r-control)] px-3 py-1.5 font-medium text-[var(--text-soft)] hover:bg-slate-100 disabled:opacity-30"
+          >
+            <ChevronLeft size={14} /> Previous
           </button>
-          <span className="text-xs text-slate-500">
-            Page {clampedPage + 1} of {totalPages}
-          </span>
+          {Array.from({ length: totalPages }).map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setPage(i)}
+              className={`h-8 min-w-8 rounded-[var(--r-control)] px-2 text-sm font-semibold ${
+                i === clampedPage ? "bg-brand text-white" : "text-[var(--text-soft)] hover:bg-slate-100"
+              }`}
+            >
+              {i + 1}
+            </button>
+          ))}
           <button
             onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
             disabled={clampedPage >= totalPages - 1}
-            className="p-1.5 rounded-md hover:bg-slate-100 disabled:opacity-30 text-slate-500"
+            className="flex items-center gap-1 rounded-[var(--r-control)] px-3 py-1.5 font-medium text-[var(--text-soft)] hover:bg-slate-100 disabled:opacity-30"
           >
-            <ChevronRight size={16} />
+            Next <ChevronRight size={14} />
           </button>
         </div>
       )}
@@ -728,9 +658,16 @@ export default function OnboardingPage() {
         )}
       </Modal>
 
-      <Modal open={!!shareVideo} onClose={() => setShareVideo(null)} title="Share">
-        {shareVideo && <HelpShareForm video={shareVideo} onSubmit={handleShare} users={users} />}
-      </Modal>
+      {shareVideo && (
+        <ShareModal
+          open={!!shareVideo}
+          onClose={() => setShareVideo(null)}
+          videoTitle={shareVideo.title}
+          users={users.map((u) => ({ id: u.id, name: u.name, email: u.email }))}
+          groups={{ team: [...TEAMS], department: [...DEPARTMENTS], location: [...LOCATIONS] }}
+          onShare={({ channel, target }) => handleShare(shareVideo, channel, target)}
+        />
+      )}
 
       <Modal
         open={addOpen}
@@ -792,61 +729,6 @@ export default function OnboardingPage() {
     </AppShell>
   );
 }
-
-function ShareForm({
-  onSubmit,
-  users,
-}: {
-  onSubmit: (target: { email?: string; userId?: string }) => void;
-  users: { id: string; name: string; email: string }[];
-}) {
-  const [mode, setMode] = useState<"email" | "user">("email");
-  const [email, setEmail] = useState("");
-  const [userId, setUserId] = useState(users[0]?.id ?? "");
-
-  return (
-    <div>
-      <div className="flex gap-2 mb-4">
-        <button
-          onClick={() => setMode("email")}
-          className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium ${mode === "email" ? "bg-brand text-white" : "bg-slate-100 text-slate-600"}`}
-        >
-          <Mail size={14} /> Email
-        </button>
-        <button
-          onClick={() => setMode("user")}
-          disabled={users.length === 0}
-          className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium disabled:opacity-40 ${mode === "user" ? "bg-brand text-white" : "bg-slate-100 text-slate-600"}`}
-        >
-          <Share2 size={14} /> Registered user
-        </button>
-      </div>
-      {mode === "email" ? (
-        <FormRow label="Email address">
-          <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.co.uk" />
-        </FormRow>
-      ) : (
-        <FormRow label="Choose a registered user">
-          <Select value={userId} onChange={(e) => setUserId(e.target.value)}>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </Select>
-        </FormRow>
-      )}
-      <Button
-        className="w-full"
-        onClick={() => onSubmit(mode === "email" ? { email } : { userId })}
-        disabled={mode === "email" ? !email : !userId}
-      >
-        Share
-      </Button>
-    </div>
-  );
-}
-
 function AddVideoForm({
   onSubmit,
   busy,
@@ -1068,95 +950,6 @@ function AssignForm({ users, onSubmit }: { users: { id: string; name: string }[]
       </FormRow>
       <Button className="w-full" onClick={() => onSubmit(userId, dueDate)} disabled={!userId || !dueDate}>
         Assign as required
-      </Button>
-    </div>
-  );
-}
-
-function HelpShareForm({
-  video,
-  users,
-  onSubmit,
-}: {
-  video: OnboardingVideo;
-  users: { id: string; name: string; email: string }[];
-  onSubmit: (video: OnboardingVideo, channel: ShareChannel, target: string) => void;
-}) {
-  const [channel, setChannel] = useState<ShareChannel>("email");
-  const [email, setEmail] = useState("");
-  const [userId, setUserId] = useState(users[0]?.id ?? "");
-  const [teamOrDept, setTeamOrDept] = useState("");
-  const [message, setMessage] = useState("");
-
-  const CHANNELS: { key: ShareChannel; label: string; icon: typeof Mail }[] = [
-    { key: "email", label: "Email", icon: Mail },
-    { key: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-    { key: "messenger", label: "Messenger", icon: MessagesSquare },
-    { key: "inplatform", label: "In-platform", icon: Bell },
-    { key: "team", label: "Team", icon: Users },
-    { key: "department", label: "Department", icon: Building2 },
-    { key: "location", label: "Location", icon: MapPin },
-  ];
-
-  function submit() {
-    if (channel === "email") onSubmit(video, channel, email);
-    else if (channel === "team" || channel === "department" || channel === "location") onSubmit(video, channel, teamOrDept);
-    else onSubmit(video, channel, users.find((u) => u.id === userId)?.name ?? "that person");
-  }
-
-  const targetOptions = channel === "team" ? TEAMS : channel === "department" ? DEPARTMENTS : channel === "location" ? LOCATIONS : [];
-
-  return (
-    <div>
-      <div className="grid grid-cols-4 gap-1.5 mb-4">
-        {CHANNELS.map((c) => (
-          <button
-            key={c.key}
-            onClick={() => setChannel(c.key)}
-            className={`flex flex-col items-center gap-1 rounded-lg py-2 text-[11px] font-medium ${channel === c.key ? "bg-brand text-white" : "bg-slate-100 text-slate-600"}`}
-          >
-            <c.icon size={14} /> {c.label}
-          </button>
-        ))}
-      </div>
-
-      {channel === "email" && (
-        <FormRow label="Email address">
-          <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.co.uk" />
-        </FormRow>
-      )}
-      {(channel === "whatsapp" || channel === "messenger" || channel === "inplatform") && (
-        <FormRow label="Choose a registered user">
-          <Select value={userId} onChange={(e) => setUserId(e.target.value)}>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </Select>
-        </FormRow>
-      )}
-      {(channel === "team" || channel === "department" || channel === "location") && (
-        <FormRow label={`Choose a ${channel}`}>
-          <Select value={teamOrDept} onChange={(e) => setTeamOrDept(e.target.value)}>
-            <option value="">Choose...</option>
-            {targetOptions.map((o) => (
-              <option key={o} value={o}>
-                {o}
-              </option>
-            ))}
-          </Select>
-        </FormRow>
-      )}
-      <FormRow label="Optional message">
-        <Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={2} placeholder="Thought this might help..." />
-      </FormRow>
-      <Button
-        className="w-full"
-        onClick={submit}
-        disabled={channel === "email" ? !email : channel === "team" || channel === "department" || channel === "location" ? !teamOrDept : !userId}
-      >
-        Share
       </Button>
     </div>
   );

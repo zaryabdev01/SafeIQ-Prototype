@@ -73,7 +73,20 @@ const FEEDBACK_LABEL: Record<TestFeedback, string> = {
   missing_information: "Missing information",
 };
 
-export function RagDetailClient({ ragId }: { ragId: string }) {
+export function RagDetailClient({ ragId: ragIdProp }: { ragId: string }) {
+  // Static export only pre-renders a handful of seed RAG ids (see
+  // generateStaticParams in page.tsx); any other id relies on a CDN fallback
+  // serving one of those static shells for the request. Next's own router
+  // state (useParams()) reflects whatever id was baked into that shell at
+  // build time, not the real URL - it's the served *file's* params, not the
+  // browser's. Reading window.location.pathname directly is the only way to
+  // recover the id the visitor actually requested.
+  const [urlRagId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const match = window.location.pathname.match(/\/rag\/([^/]+)\/?$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  });
+  const ragId = urlRagId ?? ragIdProp;
   const {
     currentUser,
     rags,

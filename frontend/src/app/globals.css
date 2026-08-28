@@ -3,11 +3,40 @@
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
-  --brand: #4f46e5;
-  --brand-dark: #3730a3;
+
+  /* Production design system — SafeIQ Figma (2026-08). "Primary 2" violet ramp. */
+  --brand: #492ea1; /* Primary 2/Normal */
+  --brand-dark: #211548; /* Primary 2/Dark :active — hover/active */
+  --brand-darker: #1a1038; /* Primary 2/Darker */
+  --brand-soft: #c7bee2; /* Primary 2/Light :active */
+  --brand-tint: #edeaef; /* Primary/Violet/Light */
+
   --safe: #0d9488;
   --warn: #b45309;
   --danger: #dc2626;
+
+  /* Neutrals + surfaces */
+  --text-strong: #221528;
+  --text-body: #241a2b;
+  --text-soft: #6b6472;
+  --border-default: #e9e5ec;
+  --border-soft: #f1eef4;
+  --surface-warm: #faf8fb;
+
+  /* Auth marketing panel + app shell (same navy) */
+  --auth-panel-bg: #140b3d;
+  --shell-bg: #140b3d;
+
+  /* Extra brand tint + status colours (Figma M3) */
+  --brand-tint-2: #edeaf6; /* Primary 2/Light */
+  --success: #2f7d5b;
+  --success-bg: #e6f2ec;
+
+  --radius-xl: 16px;
+
+  /* Control radii (kept off Tailwind's scale so `rounded-lg` etc. are untouched) */
+  --r-field: 13px;
+  --r-control: 10px;
 }
 
 @theme inline {
@@ -15,10 +44,14 @@
   --color-foreground: var(--foreground);
   --color-brand: var(--brand);
   --color-brand-dark: var(--brand-dark);
+  --color-brand-darker: var(--brand-darker);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-tint: var(--brand-tint);
+  --color-brand-tint-2: var(--brand-tint-2);
   --color-safe: var(--safe);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
-  --font-sans: "Segoe UI", ui-sans-serif, system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: var(--font-jakarta), "Segoe UI", ui-sans-serif, system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
 }
 
 body {

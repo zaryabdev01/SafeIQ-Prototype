@@ -4,32 +4,63 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthShell } from "@/components/AuthShell";
+import { AuthCard, AuthCardHeader } from "@/components/auth/AuthCard";
+import { AuthInput, AuthSelect, FieldLabel } from "@/components/auth/AuthField";
+import { Stepper } from "@/components/auth/Stepper";
+import { OtpInput } from "@/components/auth/OtpInput";
 import { Button } from "@/components/ui/Button";
-import { Input, Label, Select, FormRow } from "@/components/ui/Field";
 import { useApp } from "@/lib/store";
 import { COUNTRIES, LANGUAGES, SECTORS } from "@/lib/constants";
 import type { Country, Language, Role } from "@/lib/types";
 import { apiClient, ApiError, setApiSession } from "@/lib/apiClient";
 import { mapApiUserToAppUser } from "@/lib/apiMapping";
-import { Building2, UserRound, Check, UploadCloud, Camera, ShieldCheck, Loader2, MailCheck } from "lucide-react";
+import {
+  Building2,
+  UserRound,
+  Check,
+  UploadCloud,
+  Camera,
+  ShieldCheck,
+  Loader2,
+  ArrowRight,
+  ArrowLeft,
+  Mail,
+  Lock,
+  Layers,
+  Globe2,
+  Languages as LanguagesIcon,
+  CalendarDays,
+  MapPin,
+  Hash,
+  IdCard,
+} from "lucide-react";
 
-const EMPLOYEE_STEPS = ["Account type", "Your details", "Identity check", "Review"];
-const ORG_STEPS = ["Account type", "Your details", "Verify email", "Identity check", "Review"];
+// The organisation path is real (calls the SafeIQ API); the employee path hands
+// off to the real magic-link invite flow at /invite/[token] (see AGENTS.md /
+// PROJECT_OVERVIEW.md — direct employee self-signup needs an organisation_id the
+// UI can't resolve pre-auth).
+const ORG_STEPS = ["Account Type", "Your details", "Verify email", "Identity check", "Review"];
+
+function extractInviteToken(raw: string): string {
+  const trimmed = raw.trim();
+  const match = trimmed.match(/\/invite\/([^/?#]+)/);
+  if (match) return decodeURIComponent(match[1]);
+  return trimmed.replace(/^\/+|\/+$/g, "");
+}
 
 export default function SignupPage() {
   const router = useRouter();
-  const { signupEmployee, hydrateRealAccount } = useApp();
+  const { hydrateRealAccount } = useApp();
   const [step, setStep] = useState(0);
   const [role, setRole] = useState<Role>("organisation");
-
-  const STEPS = role === "organisation" ? ORG_STEPS : EMPLOYEE_STEPS;
+  const [employeeJoin, setEmployeeJoin] = useState(false);
+  const [inviteRef, setInviteRef] = useState("");
 
   const [orgName, setOrgName] = useState("");
   const [sector, setSector] = useState(SECTORS[0]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [country, setCountry] = useState<Country>("United Kingdom");
   const [language, setLanguage] = useState<Language>("English");
 
@@ -41,8 +72,7 @@ export default function SignupPage() {
   const [selfieTaken, setSelfieTaken] = useState(false);
   const [agree, setAgree] = useState(false);
 
-  // Real-backend signup state (organisation path only - see AGENTS.md / root README
-  // for why the employee path here stays on the mock store).
+  // Real-backend signup state (organisation path).
   const [busy, setBusy] = useState(false);
   const [apiError, setApiErrorMsg] = useState("");
   const [onboardingToken, setOnboardingToken] = useState("");
@@ -50,14 +80,8 @@ export default function SignupPage() {
   const [otpCode, setOtpCode] = useState("");
   const [kycStatus, setKycStatus] = useState<"idle" | "checking" | "approved" | "rejected">("idle");
 
-  const isOrgFlow = role === "organisation";
-
-  const canGoNext =
-    (step === 0 && role) ||
-    (step === 1 && name && email && (isOrgFlow ? password.length >= 10 : true) && (role === "employee" || orgName)) ||
-    (isOrgFlow && step === 2 && otpCode.length === 6) ||
-    (step === (isOrgFlow ? 3 : 2) && (isOrgFlow ? kycStatus === "approved" : dob && address && postcode && idFileName && selfieTaken)) ||
-    step === STEPS.length - 1;
+  const canContinueDetails = name && email && password.length >= 10 && orgName;
+  const canContinueKyc = kycStatus === "approved" && dob && address && postcode && idFileName && selfieTaken;
 
   function back() {
     setApiErrorMsg("");
@@ -65,10 +89,6 @@ export default function SignupPage() {
   }
 
   async function handleContinueFromDetails() {
-    if (!isOrgFlow) {
-      setStep(step + 1);
-      return;
-    }
     setBusy(true);
     setApiErrorMsg("");
     try {
@@ -81,7 +101,7 @@ export default function SignupPage() {
       });
       setOnboardingToken(result.onboarding_token);
       setOrgId(result.org_id);
-      setStep(step + 1);
+      setStep(2);
     } catch (err) {
       setApiErrorMsg(err instanceof ApiError ? err.message : "Something went wrong creating your organisation.");
     } finally {
@@ -94,7 +114,7 @@ export default function SignupPage() {
     setApiErrorMsg("");
     try {
       await apiClient.verifyOtp({ onboarding_token: onboardingToken, code: otpCode });
-      setStep(step + 1);
+      setStep(3);
     } catch (err) {
       setApiErrorMsg(err instanceof ApiError ? err.message : "Could not verify that code.");
     } finally {
@@ -117,25 +137,7 @@ export default function SignupPage() {
     }
   }
 
-  function next() {
-    if (step === 1) {
-      void handleContinueFromDetails();
-      return;
-    }
-    if (isOrgFlow && step === 2) {
-      void handleVerifyOtp();
-      return;
-    }
-    if (step < STEPS.length - 1) setStep(step + 1);
-  }
-
   async function finish() {
-    if (!isOrgFlow) {
-      signupEmployee({ name, email, country, language });
-      router.push("/employee");
-      return;
-    }
-
     setBusy(true);
     setApiErrorMsg("");
     try {
@@ -152,251 +154,316 @@ export default function SignupPage() {
     }
   }
 
+  const footer = (
+    <span className="text-[var(--text-soft)]">
+      Already have an account?{" "}
+      <Link href="/login" className="font-bold text-brand hover:underline">
+        Sign In
+      </Link>
+    </span>
+  );
+
+  // --- Employee: hand off to the real invite flow ---
+  if (employeeJoin) {
+    return (
+      <AuthShell footer={footer}>
+        <div className="flex w-full max-w-[480px] flex-col gap-6">
+          <Stepper count={5} current={0} />
+          <AuthCard className="flex flex-col gap-8">
+            <AuthCardHeader
+              title="Join your organisation"
+              subtitle="Employees join SafeIQ from the magic link their organisation sends. Paste that link or its code below."
+            />
+            <div className="flex flex-col gap-3">
+              <AuthInput
+                label="Invite link or code"
+                value={inviteRef}
+                onChange={(e) => setInviteRef(e.target.value)}
+                placeholder="https://app.safeiq.co/invite/…  or  mg-7f3a9c"
+                icon={<Mail size={16} />}
+              />
+              <Button
+                className="mt-1 w-full rounded-[var(--r-control)]"
+                size="lg"
+                disabled={!inviteRef.trim()}
+                onClick={() => router.push(`/invite/${encodeURIComponent(extractInviteToken(inviteRef))}`)}
+              >
+                Continue <ArrowRight size={16} />
+              </Button>
+              <Button
+                variant="outlineBrand"
+                className="w-full rounded-[var(--r-control)]"
+                size="lg"
+                onClick={() => {
+                  setEmployeeJoin(false);
+                  setRole("organisation");
+                }}
+              >
+                <ArrowLeft size={16} /> Back
+              </Button>
+            </div>
+          </AuthCard>
+        </div>
+      </AuthShell>
+    );
+  }
+
   return (
-    <AuthShell>
-      <div className="mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          {STEPS.map((s, i) => (
-            <div key={s} className="flex items-center flex-1 last:flex-initial">
-              <div
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold shrink-0 ${
-                  i < step ? "bg-brand text-white" : i === step ? "bg-brand/10 text-brand ring-2 ring-brand" : "bg-slate-100 text-slate-400"
+    <AuthShell footer={footer}>
+      <div className="flex w-full max-w-[480px] flex-col gap-6">
+        <Stepper count={5} current={step} />
+
+        <AuthCard className="flex flex-col gap-8">
+          <AuthCardHeader
+            title={step === 4 ? "Review" : ORG_STEPS[step]}
+            subtitle={
+              step === 0
+                ? "Fill out the steps to create your account."
+                : step === 2
+                  ? "Enter the code we sent to your email."
+                  : step === 4
+                    ? "Review the information below to create your account."
+                    : "Fill out the steps to create your account."
+            }
+          />
+
+          {apiError && (
+            <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">{apiError}</p>
+          )}
+
+          {/* Step 0 — Account type */}
+          {step === 0 && (
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => setRole("organisation")}
+                className={`rounded-[var(--r-field)] border-2 p-4 text-left transition-colors ${
+                  role === "organisation" ? "border-brand bg-[var(--brand-tint)]/50" : "border-[var(--border-default)] hover:border-slate-300"
                 }`}
               >
-                {i < step ? <Check size={12} /> : i + 1}
-              </div>
-              {i < STEPS.length - 1 && <div className={`h-px flex-1 mx-2 ${i < step ? "bg-brand" : "bg-slate-200"}`} />}
+                <span className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--brand-tint)] text-brand">
+                  <Building2 size={18} />
+                </span>
+                <p className="text-sm font-bold text-[var(--text-strong)]">Organization</p>
+                <p className="mt-1 text-xs text-[var(--text-soft)]">Set up RAG systems and manage your team&apos;s AI agent access.</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRole("employee")}
+                className={`rounded-[var(--r-field)] border-2 p-4 text-left transition-colors ${
+                  role === "employee" ? "border-brand bg-[var(--brand-tint)]/50" : "border-[var(--border-default)] hover:border-slate-300"
+                }`}
+              >
+                <span className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--brand-tint)] text-brand">
+                  <UserRound size={18} />
+                </span>
+                <p className="text-sm font-bold text-[var(--text-strong)]">Employee</p>
+                <p className="mt-1 text-xs text-[var(--text-soft)]">Join an organization you&apos;ve been invited to via magic link.</p>
+              </button>
+
+              <Button
+                className="mt-1 w-full rounded-[var(--r-control)]"
+                size="lg"
+                onClick={() => (role === "employee" ? setEmployeeJoin(true) : setStep(1))}
+              >
+                Continue <ArrowRight size={16} />
+              </Button>
             </div>
-          ))}
-        </div>
-        <h2 className="text-xl font-semibold text-slate-900">{STEPS[step]}</h2>
-        {isOrgFlow && (
-          <p className="text-xs text-slate-400 mt-1">This path creates a real account on the SafeIQ API - not a demo persona.</p>
-        )}
-      </div>
+          )}
 
-      {apiError && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-4">{apiError}</p>}
-
-      {step === 0 && (
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => setRole("organisation")}
-            className={`text-left p-4 rounded-xl border-2 transition-colors ${
-              role === "organisation" ? "border-brand bg-indigo-50/40" : "border-slate-200 hover:border-slate-300"
-            }`}
-          >
-            <Building2 size={20} className="text-brand mb-2" />
-            <p className="text-sm font-semibold text-slate-800">Organisation</p>
-            <p className="text-xs text-slate-500 mt-1">Set up RAG systems and manage your team&apos;s AI agent access.</p>
-          </button>
-          <button
-            onClick={() => setRole("employee")}
-            className={`text-left p-4 rounded-xl border-2 transition-colors ${
-              role === "employee" ? "border-brand bg-indigo-50/40" : "border-slate-200 hover:border-slate-300"
-            }`}
-          >
-            <UserRound size={20} className="text-brand mb-2" />
-            <p className="text-sm font-semibold text-slate-800">Employee</p>
-            <p className="text-xs text-slate-500 mt-1">Join an organisation you&apos;ve been invited to via magic link.</p>
-          </button>
-        </div>
-      )}
-
-      {step === 1 && (
-        <div>
-          {role === "organisation" && (
-            <>
-              <FormRow label="Organisation name">
-                <Input value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Bright Care Homes Ltd" />
-              </FormRow>
-              <FormRow label="Sector">
-                <Select value={sector} onChange={(e) => setSector(e.target.value)}>
-                  {SECTORS.map((s) => (
-                    <option key={s}>{s}</option>
+          {/* Step 1 — Your details (organisation) */}
+          {step === 1 && (
+            <div className="flex flex-col gap-3">
+              <AuthInput label="Organisation name" value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Bright Care Homes Ltd" icon={<Building2 size={16} />} />
+              <AuthSelect label="Sector" value={sector} onChange={(e) => setSector(e.target.value)} icon={<Layers size={16} />}>
+                {SECTORS.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </AuthSelect>
+              <AuthInput label="Your full name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Jamie Carter" icon={<UserRound size={16} />} />
+              <AuthInput label="Work email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.co.uk" icon={<Mail size={16} />} />
+              <AuthInput label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••••" icon={<Lock size={16} />} hint="At least 10 characters." />
+              <div className="grid grid-cols-2 gap-3">
+                <AuthSelect label="Country" value={country} onChange={(e) => setCountry(e.target.value as Country)} icon={<Globe2 size={16} />}>
+                  {COUNTRIES.map((c) => (
+                    <option key={c}>{c}</option>
                   ))}
-                </Select>
-              </FormRow>
+                </AuthSelect>
+                <AuthSelect label="Language" value={language} onChange={(e) => setLanguage(e.target.value as Language)} icon={<LanguagesIcon size={16} />}>
+                  {LANGUAGES.map((l) => (
+                    <option key={l}>{l}</option>
+                  ))}
+                </AuthSelect>
+              </div>
+              <p className="text-xs text-[var(--text-soft)]">This path creates a real account on the SafeIQ API - not a demo persona.</p>
+              <StepButtons
+                onNext={handleContinueFromDetails}
+                onBack={back}
+                nextLabel="Next"
+                nextDisabled={!canContinueDetails || busy}
+                busy={busy}
+              />
+            </div>
+          )}
+
+          {/* Step 2 — Verify email */}
+          {step === 2 && (
+            <div className="flex flex-col items-center gap-8">
+              <div className="flex flex-col items-center gap-4">
+                <OtpInput value={otpCode} onChange={setOtpCode} length={6} autoFocus />
+                <p className="text-sm text-slate-500">
+                  The dev backend logs the code to its console - check the terminal running <code>uvicorn</code>.
+                </p>
+              </div>
+              <div className="w-full">
+                <StepButtons
+                  onNext={handleVerifyOtp}
+                  onBack={back}
+                  nextLabel="Next"
+                  nextDisabled={otpCode.length !== 6 || busy}
+                  busy={busy}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 — Identity check (KYC) */}
+          {step === 3 && (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-start gap-2 rounded-lg bg-[var(--brand-tint)]/60 p-3 text-xs text-[var(--brand-dark)]">
+                <ShieldCheck size={16} className="mt-0.5 shrink-0" />
+                <span>Standard KYC step. This calls the real backend&apos;s KYC endpoint - the provider is TBC with the client, so the dev backend auto-approves.</span>
+              </div>
+              <AuthInput label="Date of birth" type="date" value={dob} onChange={(e) => setDob(e.target.value)} icon={<CalendarDays size={16} />} />
+              <AuthInput label="Home address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="14 Aire Street" icon={<MapPin size={16} />} />
+              <AuthInput label="Postcode" value={postcode} onChange={(e) => setPostcode(e.target.value)} placeholder="LS1 4PR" icon={<Hash size={16} />} />
+              <AuthSelect label="ID document type" value={idType} onChange={(e) => setIdType(e.target.value)} icon={<IdCard size={16} />}>
+                <option>Passport</option>
+                <option>Driving licence</option>
+                <option>National ID card</option>
+              </AuthSelect>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-[7px]">
+                  <FieldLabel>Upload {idType.toLowerCase()}</FieldLabel>
+                  <label className="flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[var(--r-field)] border-2 border-dashed border-[var(--border-default)] bg-[var(--surface-warm)] py-6 transition-colors hover:border-brand">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--brand-tint)] text-brand">
+                      <UploadCloud size={16} />
+                    </span>
+                    <span className="px-2 text-center text-xs text-[var(--text-soft)]">{idFileName || "Click to choose a file"}</span>
+                    <input type="file" className="hidden" onChange={(e) => setIdFileName(e.target.files?.[0]?.name ?? "id-document.jpg")} />
+                  </label>
+                </div>
+                <div className="flex flex-col gap-[7px]">
+                  <FieldLabel>Selfie verification</FieldLabel>
+                  <button
+                    type="button"
+                    onClick={() => setSelfieTaken(true)}
+                    className={`flex flex-col items-center justify-center gap-1.5 rounded-[var(--r-field)] border-2 border-dashed py-6 transition-colors ${
+                      selfieTaken ? "border-emerald-400 bg-emerald-50/50" : "border-[var(--border-default)] bg-[var(--surface-warm)] hover:border-brand"
+                    }`}
+                  >
+                    <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${selfieTaken ? "bg-emerald-100 text-emerald-600" : "bg-[var(--brand-tint)] text-brand"}`}>
+                      {selfieTaken ? <Check size={16} /> : <Camera size={16} />}
+                    </span>
+                    <span className="text-xs text-[var(--text-soft)]">{selfieTaken ? "Selfie captured" : "Simulate selfie capture"}</span>
+                  </button>
+                </div>
+              </div>
+              <Button
+                variant={kycStatus === "approved" ? "outline" : "primary"}
+                className="w-full rounded-[var(--r-control)]"
+                onClick={handleStartKyc}
+                disabled={busy || kycStatus === "approved"}
+              >
+                {busy && kycStatus === "checking" ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" /> Verifying...
+                  </>
+                ) : kycStatus === "approved" ? (
+                  <>
+                    <Check size={14} className="text-emerald-600" /> Identity verified
+                  </>
+                ) : (
+                  <>
+                    Start Identity Verification <ArrowRight size={16} />
+                  </>
+                )}
+              </Button>
+              <StepButtons onNext={() => setStep(4)} onBack={back} nextLabel="Next" nextDisabled={!canContinueKyc} />
+            </div>
+          )}
+
+          {/* Step 4 — Review */}
+          {step === 4 && (
+            <div className="flex flex-col gap-4">
+              <div className="divide-y divide-[var(--border-default)] rounded-[var(--r-field)] border border-[var(--border-default)] text-sm">
+                {[
+                  ["Account Type", "Organization"],
+                  ["Name", name || "-"],
+                  ["Organisation", orgName || "-"],
+                  ["Email", email || "-"],
+                  ["Country", country],
+                  ["Language", language],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex justify-between px-4 py-2.5">
+                    <span className="text-[var(--text-soft)]">{k}</span>
+                    <span className="font-semibold text-[var(--text-strong)]">{v}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between px-4 py-2.5">
+                  <span className="text-[var(--text-soft)]">Identity Check</span>
+                  <span className="font-semibold text-emerald-600">Verified</span>
+                </div>
+              </div>
+              <label className="flex cursor-pointer items-start gap-2 text-xs text-[var(--text-body)]">
+                <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 accent-[var(--brand-dark)]" />
+                I agree to the SafeIQ terms of service and privacy policy (UK GDPR compliant, data hosted in the UK).
+              </label>
+              <StepButtons
+                onNext={finish}
+                onBack={back}
+                nextLabel="Create Account"
+                nextDisabled={!agree || busy}
+                busy={busy}
+              />
+            </div>
+          )}
+        </AuthCard>
+      </div>
+    </AuthShell>
+  );
+}
+
+/** Stacked full-width Next / Back pair used at the foot of the wizard steps. */
+function StepButtons({
+  onNext,
+  onBack,
+  nextLabel,
+  nextDisabled,
+  busy,
+  hideNext,
+}: {
+  onNext: () => void;
+  onBack: () => void;
+  nextLabel: string;
+  nextDisabled?: boolean;
+  busy?: boolean;
+  hideNext?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      {!hideNext && (
+        <Button className="w-full rounded-[var(--r-control)]" size="lg" onClick={onNext} disabled={nextDisabled}>
+          {busy ? <Loader2 size={14} className="animate-spin" /> : (
+            <>
+              {nextLabel} <ArrowRight size={16} />
             </>
           )}
-          {role === "employee" && (
-            <FormRow label="Invite / access code" hint="Sent to you by your organisation via magic link.">
-              <Input value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} placeholder="mg-7f3a9c" />
-            </FormRow>
-          )}
-          <FormRow label="Your full name">
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jamie Carter" />
-          </FormRow>
-          <FormRow label="Work email">
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.co.uk" />
-          </FormRow>
-          {isOrgFlow && (
-            <FormRow label="Password" hint="At least 10 characters.">
-              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••••" />
-            </FormRow>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <FormRow label="Country">
-              <Select value={country} onChange={(e) => setCountry(e.target.value as Country)}>
-                {COUNTRIES.map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </Select>
-            </FormRow>
-            <FormRow label="Language">
-              <Select value={language} onChange={(e) => setLanguage(e.target.value as Language)}>
-                {LANGUAGES.map((l) => (
-                  <option key={l}>{l}</option>
-                ))}
-              </Select>
-            </FormRow>
-          </div>
-        </div>
-      )}
-
-      {isOrgFlow && step === 2 && (
-        <div>
-          <div className="flex items-start gap-2 rounded-lg bg-indigo-50 text-indigo-700 text-xs p-3 mb-4">
-            <MailCheck size={16} className="shrink-0 mt-0.5" />
-            <span>
-              We&apos;ve sent a 6-digit code to <strong>{email}</strong>. In this dev environment the backend logs the code to its
-              server console (no real email is sent yet) - check the terminal running <code>uvicorn</code>.
-            </span>
-          </div>
-          <FormRow label="Verification code">
-            <Input
-              value={otpCode}
-              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="123456"
-              maxLength={6}
-            />
-          </FormRow>
-        </div>
-      )}
-
-      {step === (isOrgFlow ? 3 : 2) && (
-        <div>
-          <div className="flex items-start gap-2 rounded-lg bg-indigo-50 text-indigo-700 text-xs p-3 mb-4">
-            <ShieldCheck size={16} className="shrink-0 mt-0.5" />
-            <span>
-              Standard KYC step, same across all our platforms. {isOrgFlow ? "This calls the real backend's KYC endpoint - the provider is still TBC with the client, so the dev backend auto-approves." : "This prototype simulates verification - no documents are actually collected or checked."}
-            </span>
-          </div>
-          <FormRow label="Date of birth">
-            <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
-          </FormRow>
-          <FormRow label="Home address">
-            <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="14 Aire Street" />
-          </FormRow>
-          <FormRow label="Postcode">
-            <Input value={postcode} onChange={(e) => setPostcode(e.target.value)} placeholder="LS1 4PR" />
-          </FormRow>
-          <FormRow label="ID document type">
-            <Select value={idType} onChange={(e) => setIdType(e.target.value)}>
-              <option>Passport</option>
-              <option>Driving licence</option>
-              <option>National ID card</option>
-            </Select>
-          </FormRow>
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div>
-              <Label>Upload {idType.toLowerCase()}</Label>
-              <label className="flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-slate-300 py-5 cursor-pointer hover:border-brand hover:bg-indigo-50/30 transition-colors">
-                <UploadCloud size={18} className="text-slate-400" />
-                <span className="text-xs text-slate-500 px-2 text-center">{idFileName || "Click to choose a file"}</span>
-                <input type="file" className="hidden" onChange={(e) => setIdFileName(e.target.files?.[0]?.name ?? "id-document.jpg")} />
-              </label>
-            </div>
-            <div>
-              <Label>Selfie verification</Label>
-              <button
-                onClick={() => setSelfieTaken(true)}
-                className={`w-full flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed py-5 transition-colors ${
-                  selfieTaken ? "border-emerald-400 bg-emerald-50/50" : "border-slate-300 hover:border-brand hover:bg-indigo-50/30"
-                }`}
-              >
-                {selfieTaken ? <Check size={18} className="text-emerald-600" /> : <Camera size={18} className="text-slate-400" />}
-                <span className="text-xs text-slate-500">{selfieTaken ? "Selfie captured" : "Simulate selfie capture"}</span>
-              </button>
-            </div>
-          </div>
-          {isOrgFlow && (
-            <Button variant={kycStatus === "approved" ? "outline" : "primary"} onClick={handleStartKyc} disabled={busy || kycStatus === "approved"}>
-              {busy && kycStatus === "checking" ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" /> Verifying...
-                </>
-              ) : kycStatus === "approved" ? (
-                <>
-                  <Check size={14} className="text-emerald-600" /> Identity verified
-                </>
-              ) : (
-                "Start identity verification"
-              )}
-            </Button>
-          )}
-        </div>
-      )}
-
-      {step === STEPS.length - 1 && (
-        <div>
-          <div className="rounded-lg border border-slate-200 divide-y divide-slate-100 mb-4 text-sm">
-            <div className="flex justify-between px-4 py-2.5">
-              <span className="text-slate-500">Account type</span>
-              <span className="font-medium text-slate-800 capitalize">{role}</span>
-            </div>
-            {role === "organisation" && (
-              <div className="flex justify-between px-4 py-2.5">
-                <span className="text-slate-500">Organisation</span>
-                <span className="font-medium text-slate-800">{orgName || "-"}</span>
-              </div>
-            )}
-            <div className="flex justify-between px-4 py-2.5">
-              <span className="text-slate-500">Name</span>
-              <span className="font-medium text-slate-800">{name || "-"}</span>
-            </div>
-            <div className="flex justify-between px-4 py-2.5">
-              <span className="text-slate-500">Email</span>
-              <span className="font-medium text-slate-800">{email || "-"}</span>
-            </div>
-            <div className="flex justify-between px-4 py-2.5">
-              <span className="text-slate-500">Country / language</span>
-              <span className="font-medium text-slate-800">
-                {country} / {language}
-              </span>
-            </div>
-            <div className="flex justify-between px-4 py-2.5">
-              <span className="text-slate-500">Identity check</span>
-              <span className="font-medium text-emerald-600">{isOrgFlow ? "Verified via SafeIQ API" : "Simulated - passed"}</span>
-            </div>
-          </div>
-          <label className="flex items-start gap-2 text-xs text-slate-600 cursor-pointer">
-            <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5" />
-            I agree to the SafeIQ terms of service and privacy policy (UK GDPR compliant, data hosted in the UK).
-          </label>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between mt-7">
-        <Button variant="ghost" onClick={back} className={step === 0 ? "invisible" : ""}>
-          Back
         </Button>
-        {step < STEPS.length - 1 ? (
-          <Button onClick={next} disabled={!canGoNext || busy}>
-            {busy ? <Loader2 size={14} className="animate-spin" /> : "Continue"}
-          </Button>
-        ) : (
-          <Button onClick={finish} disabled={!agree || busy}>
-            {busy ? <Loader2 size={14} className="animate-spin" /> : "Create account"}
-          </Button>
-        )}
-      </div>
-
-      <p className="mt-6 text-center text-sm text-slate-500">
-        Already have an account?{" "}
-        <Link href="/login" className="text-brand font-medium hover:underline">
-          Sign in
-        </Link>
-      </p>
-    </AuthShell>
+      )}
+      <Button variant="outlineBrand" className="w-full rounded-[var(--r-control)]" size="lg" onClick={onBack}>
+        <ArrowLeft size={16} /> Back
+      </Button>
+    </div>
   );
 }

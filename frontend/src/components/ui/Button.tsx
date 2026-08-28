@@ -2,7 +2,7 @@
 
 import { ButtonHTMLAttributes, forwardRef } from "react";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "outline";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "outline" | "outlineBrand";
 type Size = "sm" | "md" | "lg";
 
 const variantClasses: Record<Variant, string> = {
@@ -11,6 +11,8 @@ const variantClasses: Record<Variant, string> = {
   ghost: "bg-transparent text-slate-600 hover:bg-slate-100",
   danger: "bg-red-600 text-white hover:bg-red-700",
   outline: "border border-slate-300 text-slate-700 hover:bg-slate-50 bg-white",
+  // Auth-flow "Back" button from the Figma design: brand-coloured border + text.
+  outlineBrand: "border border-brand text-brand-dark hover:bg-brand-tint/40 bg-white",
 };
 
 const sizeClasses: Record<Size, string> = {

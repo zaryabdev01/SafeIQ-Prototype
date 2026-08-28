@@ -5,9 +5,21 @@ import { useRouter } from "next/navigation";
 import { useApp } from "@/lib/store";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
+import { PageHeader } from "@/components/PageHeader";
 import { FloatingWidget } from "@/components/widget/FloatingWidget";
+import type { LucideIcon } from "lucide-react";
 
-export function AppShell({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+export function AppShell({
+  title,
+  subtitle,
+  icon,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  icon?: LucideIcon;
+  children: React.ReactNode;
+}) {
   const { currentUser, hydrated } = useApp();
   const router = useRouter();
 
@@ -18,12 +30,29 @@ export function AppShell({ title, subtitle, children }: { title: string; subtitl
   if (!hydrated || !currentUser) return null;
 
   return (
-    <div className="flex min-h-screen">
+    <div className="relative flex min-h-screen overflow-hidden" style={{ backgroundColor: "var(--shell-bg)" }}>
+      {/* faint depth glows */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            "radial-gradient(38% 30% at 4% 96%, rgba(124,92,196,0.32) 0%, rgba(20,11,61,0) 70%), radial-gradient(34% 26% at 98% 2%, rgba(120,96,200,0.28) 0%, rgba(20,11,61,0) 70%)",
+        }}
+      />
+
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar title={title} subtitle={subtitle} />
-        <main className="flex-1 p-6 max-w-[1400px] w-full mx-auto">{children}</main>
+
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
+        <TopBar />
+        <main className="flex-1 overflow-y-auto rounded-tl-[28px] bg-white px-6 py-7 sm:px-8">
+          <div className="mx-auto w-full max-w-[1320px]">
+            <PageHeader title={title} subtitle={subtitle} icon={icon} />
+            {children}
+          </div>
+        </main>
       </div>
+
       <FloatingWidget />
     </div>
   );
