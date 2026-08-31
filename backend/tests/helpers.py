@@ -32,6 +32,25 @@ def override_email_sender() -> RecordingEmailSender:
     return sender
 
 
+async def seed_internal_user_and_login(
+    client: AsyncClient, *, email: str | None = None, password: str = "correct horse battery staple"
+) -> dict:
+    """Create a control.internal_users row directly (there's no signup route)
+    and log it in. Returns {email, access_token}."""
+    from app.core.security import hash_password
+    from app.db.control_models import InternalUser
+    from app.db.session import ControlSessionLocal
+
+    email = (email or f"support-{uuid.uuid4().hex[:8]}@safeiq.io").lower()
+    async with ControlSessionLocal() as session:
+        session.add(InternalUser(name="Support Staff", email=email, password_hash=hash_password(password)))
+        await session.commit()
+
+    login = await client.post("/internal/auth/login", json={"email": email, "password": password})
+    assert login.status_code == 200, login.text
+    return {"email": email, "access_token": login.json()["access_token"]}
+
+
 async def signup_organisation_and_login(
     client: AsyncClient, *, org_name: str, email: str, password: str = "correct horse battery staple"
 ) -> dict:

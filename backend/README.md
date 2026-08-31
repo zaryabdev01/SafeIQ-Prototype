@@ -74,15 +74,22 @@ against real infrastructure, not a mock, and free-tier round-trip latency varies
 
 ## What Milestone 3 (Onboarding CMS) asked for, and where it lives
 
+The catalogue is **one shared list** in `control.onboarding_videos`, authored by
+SafeIQ Internal support staff (`control.internal_users`, logged in via
+`POST /internal/auth/login`) and read by every tenant user. Authoring (tasks
+21-22) lives on `app/api/routes/internal.py` under `/internal/onboarding/*`;
+consumption (tasks 23-26) on `app/api/routes/onboarding.py` under `/onboarding/*`,
+open to any org role. Analytics (task 27) stay per-tenant.
+
 | Task | Implementation |
 |---|---|
-| 21. Video CMS (upload, thumbnail, title, description) | `app/api/routes/onboarding.py` - `POST/PATCH/DELETE /onboarding/videos`. `media_url` is nullable free text, not a real upload pipeline - S3 isn't provisioned yet (see Known simplifications) |
-| 22. Control video order from the CRM | `POST /onboarding/videos/reorder`, admin-only |
-| 23. Search and filtering by end-user type | `GET /onboarding/videos?audience=` |
-| 24. AI-assisted search | `app/services/onboarding_search.py` - pluggable `OnboardingSearchProvider`. `KeywordSearchProvider` (default) is a backend port of the frontend prototype's word-overlap heuristic; `OpenAiSearchProvider` (`ONBOARDING_SEARCH_PROVIDER=llm`) asks OpenAI for a ranked guided path and falls back to keyword on any API failure |
-| 25. Hover-description / click-to-view | Frontend-only UX (`frontend/src/app/onboarding/page.tsx`); `POST /onboarding/videos/{id}/view` records the resulting view server-side |
-| 26. Share by email / to a registered user | `POST /onboarding/videos/{id}/share` - reuses the same `EmailSender` interface as Milestone 2's invites; "share to a registered user" resolves their email server-side rather than needing a separate in-app notification channel, since none exists yet |
-| 27. Onboarding analytics | `GET /onboarding/analytics` - view/share counts per video, top search queries, aggregated from `OnboardingEvent` (kept separate from the audit ledger, which is for compliance evidence, not high-volume analytics) |
+| 21. Video CMS (upload, thumbnail, title, description) | `POST/PATCH/DELETE /internal/onboarding/videos` - SafeIQ Internal only. Real S3 media upload via `MediaStorage` (`app/services/media_storage.py`, `MEDIA_STORAGE_BACKEND=s3\|none`); `media_url` also accepts an external link directly |
+| 22. Control video order from the CRM | `POST /internal/onboarding/videos/reorder` - SafeIQ Internal only |
+| 23. Search and filtering by end-user type | `GET /onboarding/videos?audience=` - any org user, reads the shared catalogue |
+| 24. AI-assisted search | `app/services/onboarding_search.py` - pluggable `OnboardingSearchProvider`. `KeywordSearchProvider` (default) is a word-overlap heuristic; `OpenAiSearchProvider` (`ONBOARDING_SEARCH_PROVIDER=llm`) asks OpenAI for a ranked guided path and falls back to keyword on any API failure |
+| 25. Hover-description / click-to-view | Frontend-only UX; `POST /onboarding/videos/{id}/view` records the resulting view in the tenant's own `OnboardingEvent` table |
+| 26. Share by email / to a registered user | `POST /onboarding/videos/{id}/share` - reuses Milestone 2's `EmailSender`; "share to a registered user" resolves their email from the tenant schema server-side |
+| 27. Onboarding analytics | `GET /onboarding/analytics` - org admin, **their own org only**: view/share counts and top queries from that tenant's `OnboardingEvent` rows joined to the shared catalogue. Cross-org rollups for SafeIQ Internal are follow-up work |
 
 ## What Milestone 4 (Team Management) asked for, and where it lives
 

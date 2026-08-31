@@ -8,7 +8,7 @@ import uuid
 import httpx
 import pytest
 
-from app.models.tenant import OnboardingVideo, VideoAudience
+from app.db.control_models import OnboardingVideo, VideoAudience
 from app.services.onboarding_search import OpenAiSearchProvider
 
 

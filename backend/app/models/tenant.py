@@ -95,40 +95,6 @@ class Invite(TenantBase):
     responded_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
-class VideoAudience(enum.StrEnum):
-    """Matches the frontend's existing VideoAudience union
-    (frontend/src/lib/types.ts) - the onboarding grid already filters on
-    this today against mock data."""
-
-    organisation = "organisation"
-    employee = "employee"
-    all = "all"
-
-
-class OnboardingVideo(TenantBase):
-    """Milestone 3 (Onboarding CMS), task 21. `media_url` is nullable free
-    text rather than a real upload pipeline - S3 storage isn't provisioned
-    yet (that's Milestone-3-of-the-discovery-plan's environments/IaC work,
-    a different numbering to this milestone plan's Milestone 3 - see
-    backend/README.md), so this mirrors how the prototype itself only
-    ever captured a filename, not a real file."""
-
-    __tablename__ = "onboarding_videos"
-    __table_args__ = _TENANT_SCHEMA
-
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    title: Mapped[str] = mapped_column(String(200))
-    description: Mapped[str] = mapped_column(String(2000))
-    thumbnail_gradient: Mapped[str] = mapped_column(String(80))
-    media_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    audience: Mapped[VideoAudience] = mapped_column(default=VideoAudience.all)
-    order_index: Mapped[int] = mapped_column(default=0)
-    duration_seconds: Mapped[int] = mapped_column(default=0)
-    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id"))
-    created_at: Mapped[datetime] = mapped_column(default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
-
-
 class OnboardingEventType(enum.StrEnum):
     view = "view"
     share = "share"
@@ -136,16 +102,20 @@ class OnboardingEventType(enum.StrEnum):
 
 
 class OnboardingEvent(TenantBase):
-    """Analytics foundation for task 27 - every view/share/search against
-    the onboarding CMS, queryable per video or in aggregate via
-    GET /onboarding/analytics."""
+    """Analytics foundation for task 27 - every view/share/search a tenant's
+    users perform against the (now SafeIQ-Internal-owned) onboarding CMS.
+    Deliberately kept per-tenant: an org admin sees only their own org's
+    engagement via GET /onboarding/analytics. The video catalogue itself
+    lives in `control.onboarding_videos` (see app/db/control_models.py), so
+    `video_id` references a control-plane id - cross-schema, hence no FK,
+    same pattern as control's directory indexes."""
 
     __tablename__ = "onboarding_events"
     __table_args__ = _TENANT_SCHEMA
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     event_type: Mapped[OnboardingEventType]
-    video_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tenant.onboarding_videos.id", ondelete="CASCADE"), nullable=True)
+    video_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tenant.users.id"), nullable=True)
     query: Mapped[str | None] = mapped_column(String(500), nullable=True)
     detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)

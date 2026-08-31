@@ -5,7 +5,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
 
-from app.models.tenant import OnboardingEventType, VideoAudience
+from app.db.control_models import VideoAudience
+from app.models.tenant import OnboardingEventType
 
 
 class OnboardingVideoResponse(BaseModel):

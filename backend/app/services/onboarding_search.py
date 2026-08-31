@@ -21,7 +21,7 @@ from abc import ABC, abstractmethod
 import httpx
 
 from app.core.config import get_settings
-from app.models.tenant import OnboardingVideo
+from app.db.control_models import OnboardingVideo
 
 logger = logging.getLogger("safeiq.onboarding_search")
 

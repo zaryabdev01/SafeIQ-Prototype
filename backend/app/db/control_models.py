@@ -9,9 +9,11 @@ being queried across schemas.
 
 from __future__ import annotations
 
+import enum
 import uuid
 from datetime import datetime
 
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -44,6 +46,43 @@ class InternalUser(ControlBase):
     password_hash: Mapped[str] = mapped_column(String(255))
     two_factor_enabled: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class VideoAudience(enum.StrEnum):
+    """Matches the frontend's VideoAudience union (frontend/src/lib/types.ts)."""
+
+    organisation = "organisation"
+    employee = "employee"
+    all = "all"
+
+
+class OnboardingVideo(ControlBase):
+    """Milestone 3 (Onboarding CMS), tasks 21-22. One shared catalogue,
+    curated by SafeIQ Internal support staff (`created_by` -> internal_users)
+    and read by every tenant - hence control-plane, not per-tenant.
+
+    `media_url` is a directly playable URL: either an external link (Vimeo
+    etc.) set by the operator, or - once MEDIA_STORAGE_BACKEND=s3 - a URL
+    derived from `media_key`, the object key of a file uploaded through the
+    presigned-upload flow. `media_key` is null for external links."""
+
+    __tablename__ = "onboarding_videos"
+    __table_args__ = {"schema": "control"}
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(String(2000))
+    thumbnail_gradient: Mapped[str] = mapped_column(String(80))
+    media_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    media_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    audience: Mapped[VideoAudience] = mapped_column(
+        SAEnum(VideoAudience, name="videoaudience", schema="control"), default=VideoAudience.all
+    )
+    order_index: Mapped[int] = mapped_column(default=0)
+    duration_seconds: Mapped[int] = mapped_column(default=0)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("control.internal_users.id"))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
 
 class UserDirectoryEntry(ControlBase):

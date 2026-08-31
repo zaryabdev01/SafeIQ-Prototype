@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 
-from app.models.tenant import OnboardingVideo, VideoAudience
+from app.db.control_models import OnboardingVideo, VideoAudience
 from app.services.onboarding_search import KeywordSearchProvider
 
 
