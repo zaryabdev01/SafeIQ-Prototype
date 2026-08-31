@@ -12,10 +12,10 @@ import { formatDateTime } from "@/lib/format";
 import { COUNTRIES, LANGUAGES, SECTORS } from "@/lib/constants";
 import type { Country, Language } from "@/lib/types";
 import { apiClient, ApiError, type ApiAuditEntry, type ApiLoginEvent } from "@/lib/apiClient";
-import { ShieldCheck, Building2, History, Smartphone, Check, Globe2, FileLock2, Loader2, Search } from "lucide-react";
+import { Building2, History, Smartphone, Check, Globe2, FileLock2, Loader2, Search } from "lucide-react";
 
 export default function SettingsPage() {
-  const { currentUser, isRealSession, toggle2FA, toggleIPLock, loginHistory, users, organisations, updateOrganisation } = useApp();
+  const { currentUser, isRealSession, loginHistory, users, organisations, updateOrganisation } = useApp();
 
   const isOrg = isOrgLevel(currentUser);
   const org = organisations.find((o) => o.id === currentUser?.orgId);
@@ -115,40 +115,6 @@ export default function SettingsPage() {
   return (
     <AppShell title="Settings" subtitle="Security and account activity">
       <div className="grid lg:grid-cols-2 gap-6 mb-6">
-        <Card>
-          <CardHeader>
-            <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-              <ShieldCheck size={15} /> Security
-            </h2>
-          </CardHeader>
-          <CardBody className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3.5">
-              <div>
-                <p className="text-sm font-medium text-slate-800">Two-step verification</p>
-                <p className="text-xs text-slate-500">Require a one-time code at every sign-in</p>
-              </div>
-              <button
-                onClick={() => toggle2FA(currentUser.id)}
-                className={`w-11 h-6 rounded-full relative transition-colors shrink-0 ${currentUser.twoFactorEnabled ? "bg-brand" : "bg-slate-200"}`}
-              >
-                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${currentUser.twoFactorEnabled ? "left-[22px]" : "left-0.5"}`} />
-              </button>
-            </div>
-            <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3.5">
-              <div>
-                <p className="text-sm font-medium text-slate-800">IP address lock</p>
-                <p className="text-xs text-slate-500">Only allow sign-in from approved IP addresses</p>
-              </div>
-              <button
-                onClick={() => toggleIPLock(currentUser.id)}
-                className={`w-11 h-6 rounded-full relative transition-colors shrink-0 ${currentUser.ipLockEnabled ? "bg-brand" : "bg-slate-200"}`}
-              >
-                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${currentUser.ipLockEnabled ? "left-[22px]" : "left-0.5"}`} />
-              </button>
-            </div>
-          </CardBody>
-        </Card>
-
         <Card>
           <CardHeader>
             <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
