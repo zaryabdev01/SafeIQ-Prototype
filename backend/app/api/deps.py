@@ -10,7 +10,8 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_token
-from app.db.session import tenant_session
+from app.db.control_models import InternalUser
+from app.db.session import get_control_session_dep, tenant_session
 from app.models.tenant import TeamRole
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
@@ -34,6 +35,8 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> Curren
 
     if payload.get("type") != "access":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "This token cannot be used to call the API")
+    if payload.get("scope") == "internal":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "A SafeIQ Internal token cannot be used for tenant API calls")
 
     return CurrentUser(
         id=uuid.UUID(payload["sub"]),
@@ -53,6 +56,36 @@ async def get_tenant_db(current_user: CurrentUser = Depends(get_current_user)) -
         raise
     finally:
         await session.close()
+
+
+@dataclass
+class CurrentInternalUser:
+    id: uuid.UUID
+    email: str
+    name: str
+
+
+async def get_current_internal_user(
+    token: str | None = Depends(oauth2_scheme),
+    control_db: AsyncSession = Depends(get_control_session_dep),
+) -> CurrentInternalUser:
+    """Authenticates a SafeIQ Internal console account. Mirrors
+    `get_current_user` but resolves against `control.internal_users` and
+    requires the `internal` scope - a tenant access token is rejected."""
+    if token is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+    try:
+        payload = decode_token(token)
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token") from exc
+
+    if payload.get("type") != "access" or payload.get("scope") != "internal":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This token is not valid for the SafeIQ Internal console")
+
+    user = await control_db.get(InternalUser, uuid.UUID(payload["sub"]))
+    if user is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "This account no longer exists")
+    return CurrentInternalUser(id=user.id, email=user.email, name=user.name)
 
 
 def require_role(*roles: TeamRole):

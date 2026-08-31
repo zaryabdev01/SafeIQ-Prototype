@@ -71,6 +71,35 @@ def create_access_token(
     return _encode(payload)
 
 
+def create_internal_token(
+    *,
+    subject: str,
+    token_type: Literal["access", "refresh"] = "access",
+    expires_minutes: int | None = None,
+) -> str:
+    """Token for a SafeIQ Internal console account (control.internal_users).
+
+    Carries `scope: "internal"` and deliberately none of the tenant claims
+    (org_id / tenant_schema / role) - an internal user is cross-tenant and
+    must never be routed into a tenant schema. `get_current_internal_user`
+    rejects anything without this scope, and `get_current_user` rejects
+    anything with it.
+    """
+    settings = get_settings()
+    default_minutes = (
+        settings.access_token_expire_minutes if token_type == "access" else settings.refresh_token_expire_minutes
+    )
+    now = datetime.now(UTC)
+    payload = {
+        "sub": subject,
+        "scope": "internal",
+        "type": token_type,
+        "iat": now,
+        "exp": now + timedelta(minutes=expires_minutes or default_minutes),
+    }
+    return _encode(payload)
+
+
 def create_onboarding_token(*, subject: str, org_id: str, tenant_schema: str) -> str:
     """A narrow-purpose token issued right after signup: only valid for
     continuing onboarding (OTP verification, KYC), never for calling the
