@@ -171,9 +171,17 @@ class EmbeddingSearchProvider(OnboardingSearchProvider):
             logger.warning("OpenAI embedding search failed (%s); falling back to keyword", exc.__class__.__name__)
             return await self._fallback.search(query, videos)
 
-        hits = [(video, score) for video, score in scored if score >= self._min_similarity]
-        hits.sort(key=lambda pair: pair[1], reverse=True)
-        return [video for video, _ in hits]
+        scored.sort(key=lambda pair: pair[1], reverse=True)
+        # One line per search so the threshold can be calibrated against real
+        # queries - cosine scores for text-embedding-3-small tend to sit well
+        # below 1 even for good matches.
+        logger.info(
+            "embedding search %r (cutoff %.2f): %s",
+            query,
+            self._min_similarity,
+            ", ".join(f"{v.title}={s:.3f}" for v, s in scored),
+        )
+        return [video for video, score in scored if score >= self._min_similarity]
 
     async def _score(self, query: str, videos: list[OnboardingVideo]) -> list[tuple[OnboardingVideo, float]]:
         inputs = [query] + [f"{v.title}\n{v.description}" for v in videos]

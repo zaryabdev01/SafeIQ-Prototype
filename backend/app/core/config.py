@@ -22,8 +22,10 @@ class Settings(BaseSettings):
     # "keyword" | "llm" (OpenAI ranker) | "embedding" (cosine similarity + threshold)
     onboarding_search_provider: str = "keyword"
     # Minimum cosine similarity for a video to be returned by the "embedding" provider.
-    # ~0.25 = loosely related, ~0.35+ = on topic. Tune against the real catalogue.
-    onboarding_search_min_similarity: float = 0.30
+    # Note text-embedding-3-small scores run low: ~0.2 loosely related, ~0.35-0.55
+    # genuinely on topic, 0.7+ only for near-duplicate wording. The provider logs
+    # every query's scores at INFO so this can be calibrated against real queries.
+    onboarding_search_min_similarity: float = 0.70
 
     otp_expire_minutes: int = 10
     invite_expire_days: int = 14
