@@ -69,7 +69,7 @@ function mapApiVideo(v: ApiOnboardingVideo): OnboardingVideo {
     thumbnailGradient: v.thumbnail_gradient,
     audience: v.audience,
     order: v.order_index,
-    durationSeconds: v.duration_seconds,
+    durationSeconds: 0,
     mediaUrl: v.media_url,
   };
 }
@@ -322,7 +322,6 @@ export default function OnboardingPage() {
               title={v.title}
               description={v.description}
               thumbnailGradient={v.thumbnailGradient}
-              durationLabel={formatDuration(v.durationSeconds)}
               tags={[audienceTag(v.audience)]}
               onOpen={() => openVideoAndTrackView(v)}
               actions={[{ label: "Share", kind: "share", onClick: () => setShareVideo(v) }]}
@@ -338,7 +337,6 @@ export default function OnboardingPage() {
               <VideoPreview url={openVideo.mediaUrl} gradient={openVideo.thumbnailGradient} />
               <p className="text-sm text-slate-600 mb-3">{openVideo.description}</p>
               <div className="flex items-center gap-2 text-xs text-slate-400">
-                <Clock size={12} /> {formatDuration(openVideo.durationSeconds)}
                 <Badge tone={openVideo.audience === "organisation" ? "indigo" : openVideo.audience === "employee" ? "teal" : "slate"}>{openVideo.audience}</Badge>
               </div>
             </div>

@@ -18,7 +18,6 @@ def _video(title: str, description: str) -> OnboardingVideo:
         thumbnail_gradient="from-indigo-500 to-violet-600",
         audience=VideoAudience.all,
         order_index=0,
-        duration_seconds=60,
         created_by=uuid.uuid4(),
     )
 

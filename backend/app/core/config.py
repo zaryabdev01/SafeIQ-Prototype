@@ -19,7 +19,11 @@ class Settings(BaseSettings):
 
     email_backend: str = "console"
     kyc_provider: str = "mock"
+    # "keyword" | "llm" (OpenAI ranker) | "embedding" (cosine similarity + threshold)
     onboarding_search_provider: str = "keyword"
+    # Minimum cosine similarity for a video to be returned by the "embedding" provider.
+    # ~0.25 = loosely related, ~0.35+ = on topic. Tune against the real catalogue.
+    onboarding_search_min_similarity: float = 0.30
 
     otp_expire_minutes: int = 10
     invite_expire_days: int = 14
@@ -44,9 +48,10 @@ class Settings(BaseSettings):
     # applicant to "approved". Only for local testing without the shared webhook secret.
     kyc_allow_unverified_webhook_approval: bool = False
 
-    # --- OpenAI (onboarding_search_provider="llm") ---
+    # --- OpenAI (onboarding_search_provider="llm" or "embedding") ---
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    openai_embedding_model: str = "text-embedding-3-small"
     openai_base_url: str = "https://api.openai.com/v1"
 
     # --- Onboarding media storage. "none" (default) is a no-op stub: the

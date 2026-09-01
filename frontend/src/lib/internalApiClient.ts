@@ -91,7 +91,6 @@ export interface InternalVideo {
   category: string | null;
   audience: ApiVideoAudience;
   order_index: number;
-  duration_seconds: number;
   created_by: string;
   created_at: string;
 }
@@ -107,7 +106,6 @@ export interface CreateVideoInput {
   description: string;
   thumbnail_gradient: string;
   audience: ApiVideoAudience;
-  duration_seconds: number;
   media_url?: string | null;
   media_key?: string | null;
   category?: string | null;

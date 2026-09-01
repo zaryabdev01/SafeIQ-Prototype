@@ -80,7 +80,6 @@ class OnboardingVideo(ControlBase):
         SAEnum(VideoAudience, name="videoaudience", schema="control"), default=VideoAudience.all
     )
     order_index: Mapped[int] = mapped_column(default=0)
-    duration_seconds: Mapped[int] = mapped_column(default=0)
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("control.internal_users.id"))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)

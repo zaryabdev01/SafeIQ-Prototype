@@ -31,7 +31,7 @@ export function VideoCard({
   title: string;
   description: string;
   thumbnailGradient: string;
-  durationLabel: string;
+  durationLabel?: string;
   statusLabel?: string;
   statusTone?: "recommended" | "next" | "new" | "required" | "neutral";
   tags?: VideoCardTag[];
@@ -61,9 +61,11 @@ export function VideoCard({
         <span className="flex size-12 items-center justify-center rounded-full bg-white/25 backdrop-blur transition-transform group-hover:scale-110">
           <Play size={18} className="ml-0.5 fill-white text-white" />
         </span>
-        <span className="absolute bottom-3 left-3 flex items-center gap-1 rounded-md bg-black/45 px-1.5 py-0.5 text-[10px] font-medium text-white">
-          <Clock size={9} /> {durationLabel}
-        </span>
+        {durationLabel && (
+          <span className="absolute bottom-3 left-3 flex items-center gap-1 rounded-md bg-black/45 px-1.5 py-0.5 text-[10px] font-medium text-white">
+            <Clock size={9} /> {durationLabel}
+          </span>
+        )}
       </div>
 
       <div className="p-3.5">

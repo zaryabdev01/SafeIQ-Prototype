@@ -21,7 +21,6 @@ async def _create_video(client: AsyncClient, internal_token: str, **overrides) -
         "description": "Step by step guide to setting up your first RAG",
         "thumbnail_gradient": "from-indigo-500 to-violet-600",
         "audience": "all",
-        "duration_seconds": 90,
         **overrides,
     }
     response = await client.post(
@@ -64,7 +63,7 @@ async def test_upload_url_is_503_when_media_storage_is_not_configured(
 async def test_org_admin_cannot_author_the_catalogue(client: AsyncClient, postgres_available: bool) -> None:
     admin = await signup_organisation_and_login(client, org_name="No Author Org", email=f"a-{uuid.uuid4().hex[:8]}@example.com")
     headers = {"Authorization": f"Bearer {admin['access_token']}"}
-    body = {"title": "x", "description": "y", "thumbnail_gradient": "g", "audience": "all", "duration_seconds": 1}
+    body = {"title": "x", "description": "y", "thumbnail_gradient": "g", "audience": "all"}
 
     # the internal author route rejects a tenant token...
     assert (await client.post("/internal/onboarding/videos", json=body, headers=headers)).status_code == 403

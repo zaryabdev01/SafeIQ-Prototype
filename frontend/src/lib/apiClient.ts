@@ -178,7 +178,6 @@ export interface ApiOnboardingVideo {
   category: string | null;
   audience: ApiVideoAudience;
   order_index: number;
-  duration_seconds: number;
   created_by: string;
   created_at: string;
 }

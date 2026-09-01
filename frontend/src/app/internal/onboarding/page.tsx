@@ -46,12 +46,6 @@ const CATEGORIES = [
   "General",
 ];
 
-function formatDuration(seconds: number): string {
-  if (!seconds) return "—";
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
 
 export default function InternalOnboardingPage() {
   const { currentUser } = useApp();
@@ -179,9 +173,6 @@ export default function InternalOnboardingPage() {
               )}
               {video.category && <Badge tone="indigo">{video.category}</Badge>}
               <Badge tone="slate">{AUDIENCE_LABELS[video.audience]}</Badge>
-              <span className="text-xs text-slate-400 tabular-nums w-10 text-right shrink-0">
-                {formatDuration(video.duration_seconds)}
-              </span>
               <button
                 onClick={() => { setEditing(video); setFormOpen(true); }}
                 className="text-slate-400 hover:text-brand p-1.5 rounded-md hover:bg-slate-100 shrink-0"
@@ -235,7 +226,6 @@ function VideoForm({
   const [gradient, setGradient] = useState(existing?.thumbnail_gradient ?? GRADIENTS[0]);
   const [audience, setAudience] = useState<ApiVideoAudience>(existing?.audience ?? "all");
   const [category, setCategory] = useState(existing?.category ?? "");
-  const [durationSeconds, setDurationSeconds] = useState(existing?.duration_seconds ?? 0);
   const [mediaUrl, setMediaUrl] = useState(existing?.media_url ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -253,7 +243,6 @@ function VideoForm({
         thumbnail_gradient: gradient,
         audience,
         category: category || null,
-        duration_seconds: Number(durationSeconds) || 0,
         media_url: mediaUrl.trim() || null,
         media_key: null,
       };
@@ -291,24 +280,13 @@ function VideoForm({
           <Label>Description</Label>
           <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Audience</Label>
-            <Select value={audience} onChange={(e) => setAudience(e.target.value as ApiVideoAudience)}>
-              <option value="all">Everyone</option>
-              <option value="organisation">Organisation</option>
-              <option value="employee">Employee</option>
-            </Select>
-          </div>
-          <div>
-            <Label>Duration (seconds)</Label>
-            <Input
-              type="number"
-              min={0}
-              value={durationSeconds}
-              onChange={(e) => setDurationSeconds(Number(e.target.value))}
-            />
-          </div>
+        <div>
+          <Label>Audience</Label>
+          <Select value={audience} onChange={(e) => setAudience(e.target.value as ApiVideoAudience)}>
+            <option value="all">Everyone</option>
+            <option value="organisation">Organisation</option>
+            <option value="employee">Employee</option>
+          </Select>
         </div>
         <div>
           <Label>Category</Label>

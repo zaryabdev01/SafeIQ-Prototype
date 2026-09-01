@@ -18,7 +18,6 @@ class OnboardingVideoResponse(BaseModel):
     category: str | None
     audience: VideoAudience
     order_index: int
-    duration_seconds: int
     created_by: uuid.UUID
     created_at: datetime
 
@@ -43,7 +42,6 @@ def serialize_video(video: OnboardingVideo) -> OnboardingVideoResponse:
         category=video.category,
         audience=video.audience,
         order_index=video.order_index,
-        duration_seconds=video.duration_seconds,
         created_by=video.created_by,
         created_at=video.created_at,
     )
@@ -57,7 +55,6 @@ class CreateOnboardingVideoRequest(BaseModel):
     media_key: str | None = None
     category: str | None = Field(default=None, max_length=80)
     audience: VideoAudience = VideoAudience.all
-    duration_seconds: int = Field(default=0, ge=0)
 
 
 class UpdateOnboardingVideoRequest(BaseModel):
@@ -68,7 +65,6 @@ class UpdateOnboardingVideoRequest(BaseModel):
     media_key: str | None = None
     category: str | None = Field(default=None, max_length=80)
     audience: VideoAudience | None = None
-    duration_seconds: int | None = Field(default=None, ge=0)
 
 
 class MediaUploadRequest(BaseModel):
