@@ -45,6 +45,16 @@ async def test_internal_creates_a_video_every_org_can_see(client: AsyncClient, p
         assert any(v["id"] == video["id"] for v in listing.json())
 
 
+async def test_upload_url_is_503_until_media_storage_is_configured(client: AsyncClient, postgres_available: bool) -> None:
+    internal = await seed_internal_user_and_login(client)
+    response = await client.post(
+        "/internal/onboarding/videos/upload-url",
+        json={"filename": "clip.mp4", "content_type": "video/mp4"},
+        headers={"Authorization": f"Bearer {internal['access_token']}"},
+    )
+    assert response.status_code == 503
+
+
 async def test_org_admin_cannot_author_the_catalogue(client: AsyncClient, postgres_available: bool) -> None:
     admin = await signup_organisation_and_login(client, org_name="No Author Org", email=f"a-{uuid.uuid4().hex[:8]}@example.com")
     headers = {"Authorization": f"Bearer {admin['access_token']}"}

@@ -49,6 +49,21 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     openai_base_url: str = "https://api.openai.com/v1"
 
+    # --- Onboarding media storage. "none" (default) is a no-op stub: the
+    # upload-url endpoint 503s and video responses fall back to whatever
+    # media_url the operator typed. "s3" enables presigned upload/playback.
+    # Credentials come from the ECS task role by default; the *_access_key_id
+    # / *_secret_access_key pair is a fallback only. ---
+    media_storage_backend: str = "none"  # "none" | "s3"
+    media_s3_bucket: str = ""
+    media_s3_region: str = ""
+    media_s3_prefix: str = "onboarding/"
+    media_s3_access_key_id: str = ""
+    media_s3_secret_access_key: str = ""
+    media_cdn_domain: str = ""  # optional CloudFront domain for playback
+    media_upload_ttl_seconds: int = 900
+    media_url_ttl_seconds: int = 3600
+
     # --- Cloudflare Turnstile (CAPTCHA). Verification middleware is not wired yet;
     # these are recognised so a full .env doesn't carry orphan keys. ---
     captcha_enabled: bool = False

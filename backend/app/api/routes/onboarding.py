@@ -26,6 +26,7 @@ from app.schemas.onboarding import (
     OnboardingVideoResponse,
     ShareVideoRequest,
     VideoAnalytics,
+    serialize_video,
 )
 from app.services.email import EmailSender, get_email_sender
 from app.services.onboarding_search import OnboardingSearchProvider, get_onboarding_search_provider
@@ -42,7 +43,7 @@ async def list_videos(
     control_db: AsyncSession = Depends(get_control_session_dep),
     audience: VideoAudience | None = None,
     q: str | None = None,
-) -> list[OnboardingVideo]:
+) -> list[OnboardingVideoResponse]:
     stmt = select(OnboardingVideo).order_by(OnboardingVideo.order_index)
     if audience is not None:
         stmt = stmt.where((OnboardingVideo.audience == audience) | (OnboardingVideo.audience == VideoAudience.all))
@@ -54,7 +55,7 @@ async def list_videos(
         tenant_db.add(OnboardingEvent(event_type=OnboardingEventType.search, user_id=current_user.id, query=q.strip()))
         await tenant_db.flush()
 
-    return videos
+    return [serialize_video(v) for v in videos]
 
 
 @router.post("/videos/{video_id}/view", status_code=status.HTTP_204_NO_CONTENT)
