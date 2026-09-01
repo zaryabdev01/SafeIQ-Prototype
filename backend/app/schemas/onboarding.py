@@ -15,6 +15,7 @@ class OnboardingVideoResponse(BaseModel):
     description: str
     thumbnail_gradient: str
     media_url: str | None
+    category: str | None
     audience: VideoAudience
     order_index: int
     duration_seconds: int
@@ -39,6 +40,7 @@ def serialize_video(video: OnboardingVideo) -> OnboardingVideoResponse:
         description=video.description,
         thumbnail_gradient=video.thumbnail_gradient,
         media_url=media_url,
+        category=video.category,
         audience=video.audience,
         order_index=video.order_index,
         duration_seconds=video.duration_seconds,
@@ -53,6 +55,7 @@ class CreateOnboardingVideoRequest(BaseModel):
     thumbnail_gradient: str = Field(min_length=1, max_length=80)
     media_url: str | None = None
     media_key: str | None = None
+    category: str | None = Field(default=None, max_length=80)
     audience: VideoAudience = VideoAudience.all
     duration_seconds: int = Field(default=0, ge=0)
 
@@ -63,6 +66,7 @@ class UpdateOnboardingVideoRequest(BaseModel):
     thumbnail_gradient: str | None = None
     media_url: str | None = None
     media_key: str | None = None
+    category: str | None = Field(default=None, max_length=80)
     audience: VideoAudience | None = None
     duration_seconds: int | None = Field(default=None, ge=0)
 

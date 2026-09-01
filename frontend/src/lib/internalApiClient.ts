@@ -88,6 +88,7 @@ export interface InternalVideo {
   description: string;
   thumbnail_gradient: string;
   media_url: string | null;
+  category: string | null;
   audience: ApiVideoAudience;
   order_index: number;
   duration_seconds: number;
@@ -109,6 +110,7 @@ export interface CreateVideoInput {
   duration_seconds: number;
   media_url?: string | null;
   media_key?: string | null;
+  category?: string | null;
 }
 
 export const internalApiClient = {

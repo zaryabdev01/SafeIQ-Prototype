@@ -151,6 +151,7 @@ export default function OnboardingPage() {
   } = useApp();
   const isAdmin = isOrgLevel(currentUser);
   const [audience, setAudience] = useState<"all" | VideoAudience>("all");
+  const [realCategory, setRealCategory] = useState("");
   const [query, setQuery] = useState("");
   const [aiSuggestions, setAiSuggestions] = useState<string[] | null>(null);
   const [viewAll, setViewAll] = useState(false);
@@ -185,6 +186,7 @@ export default function OnboardingPage() {
     try {
       const videos = await apiClient.listOnboardingVideos({
         audience: audience === "all" ? undefined : audience,
+        category: realCategory || undefined,
         q: committedQuery || undefined,
       });
       setRealVideos(videos);
@@ -194,7 +196,7 @@ export default function OnboardingPage() {
     } finally {
       setRealLoading(false);
     }
-  }, [audience, committedQuery]);
+  }, [audience, realCategory, committedQuery]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- kicks off an async fetch on mount/filter-change; loading flag must flip synchronously
@@ -282,6 +284,14 @@ export default function OnboardingPage() {
                 <option value="all">User type: All</option>
                 <option value="organisation">Organisation</option>
                 <option value="employee">Employee</option>
+              </Select>
+              <Select value={realCategory} onChange={(e) => setRealCategory(e.target.value)} className="!w-auto">
+                <option value="">Categories: All</option>
+                {HELP_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
               </Select>
               <button onClick={() => setViewAll((v) => !v)} className="text-sm font-bold text-white hover:underline">
                 {viewAll ? "Show default 9" : "View all"}

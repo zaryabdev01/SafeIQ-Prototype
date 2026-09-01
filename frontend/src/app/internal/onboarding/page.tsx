@@ -35,6 +35,17 @@ const AUDIENCE_LABELS: Record<ApiVideoAudience, string> = {
   employee: "Employee",
 };
 
+const CATEGORIES = [
+  "Getting Started",
+  "Employees",
+  "Training",
+  "Reports",
+  "Account",
+  "Billing",
+  "Troubleshooting",
+  "General",
+];
+
 function formatDuration(seconds: number): string {
   if (!seconds) return "—";
   const m = Math.floor(seconds / 60);
@@ -166,6 +177,7 @@ export default function InternalOnboardingPage() {
                   <ExternalLink size={14} />
                 </a>
               )}
+              {video.category && <Badge tone="indigo">{video.category}</Badge>}
               <Badge tone="slate">{AUDIENCE_LABELS[video.audience]}</Badge>
               <span className="text-xs text-slate-400 tabular-nums w-10 text-right shrink-0">
                 {formatDuration(video.duration_seconds)}
@@ -222,6 +234,7 @@ function VideoForm({
   const [description, setDescription] = useState(existing?.description ?? "");
   const [gradient, setGradient] = useState(existing?.thumbnail_gradient ?? GRADIENTS[0]);
   const [audience, setAudience] = useState<ApiVideoAudience>(existing?.audience ?? "all");
+  const [category, setCategory] = useState(existing?.category ?? "");
   const [durationSeconds, setDurationSeconds] = useState(existing?.duration_seconds ?? 0);
   const [mediaUrl, setMediaUrl] = useState(existing?.media_url ?? "");
   const [file, setFile] = useState<File | null>(null);
@@ -239,6 +252,7 @@ function VideoForm({
         description: description.trim(),
         thumbnail_gradient: gradient,
         audience,
+        category: category || null,
         duration_seconds: Number(durationSeconds) || 0,
         media_url: mediaUrl.trim() || null,
         media_key: null,
@@ -295,6 +309,17 @@ function VideoForm({
               onChange={(e) => setDurationSeconds(Number(e.target.value))}
             />
           </div>
+        </div>
+        <div>
+          <Label>Category</Label>
+          <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">Uncategorised</option>
+            {CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </Select>
         </div>
         <div>
           <Label>Thumbnail</Label>

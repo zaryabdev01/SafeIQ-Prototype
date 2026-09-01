@@ -175,6 +175,7 @@ export interface ApiOnboardingVideo {
   description: string;
   thumbnail_gradient: string;
   media_url: string | null;
+  category: string | null;
   audience: ApiVideoAudience;
   order_index: number;
   duration_seconds: number;
@@ -299,9 +300,10 @@ export const apiClient = {
 
   verifyAuditChain: () => request<ApiAuditVerification>("/audit/verify", { auth: true }),
 
-  listOnboardingVideos: (params: { audience?: ApiVideoAudience; q?: string } = {}) => {
+  listOnboardingVideos: (params: { audience?: ApiVideoAudience; category?: string; q?: string } = {}) => {
     const query: Record<string, string> = {};
     if (params.audience) query.audience = params.audience;
+    if (params.category) query.category = params.category;
     if (params.q) query.q = params.q;
     return request<ApiOnboardingVideo[]>("/onboarding/videos", { auth: true, query });
   },

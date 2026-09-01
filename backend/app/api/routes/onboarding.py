@@ -42,11 +42,14 @@ async def list_videos(
     tenant_db: AsyncSession = Depends(get_tenant_db),
     control_db: AsyncSession = Depends(get_control_session_dep),
     audience: VideoAudience | None = None,
+    category: str | None = None,
     q: str | None = None,
 ) -> list[OnboardingVideoResponse]:
     stmt = select(OnboardingVideo).order_by(OnboardingVideo.order_index)
     if audience is not None:
         stmt = stmt.where((OnboardingVideo.audience == audience) | (OnboardingVideo.audience == VideoAudience.all))
+    if category and category.strip():
+        stmt = stmt.where(OnboardingVideo.category == category.strip())
     videos = list((await control_db.execute(stmt)).scalars().all())
 
     if q and q.strip():

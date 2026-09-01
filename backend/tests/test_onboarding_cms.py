@@ -45,7 +45,13 @@ async def test_internal_creates_a_video_every_org_can_see(client: AsyncClient, p
         assert any(v["id"] == video["id"] for v in listing.json())
 
 
-async def test_upload_url_is_503_until_media_storage_is_configured(client: AsyncClient, postgres_available: bool) -> None:
+async def test_upload_url_is_503_when_media_storage_is_not_configured(
+    client: AsyncClient, postgres_available: bool, monkeypatch
+) -> None:
+    from app.api.routes import internal as internal_routes
+    from app.services.media_storage import NullMediaStorage
+
+    monkeypatch.setattr(internal_routes, "get_media_storage", lambda: NullMediaStorage())
     internal = await seed_internal_user_and_login(client)
     response = await client.post(
         "/internal/onboarding/videos/upload-url",
@@ -81,6 +87,22 @@ async def test_audience_filter(client: AsyncClient, postgres_available: bool) ->
     assert emp_only["id"] in ids
     assert everyone["id"] in ids
     assert org_only["id"] not in ids
+
+
+async def test_category_round_trips_and_filters(client: AsyncClient, postgres_available: bool) -> None:
+    internal = await seed_internal_user_and_login(client)
+    marker = uuid.uuid4().hex[:10]
+    training = await _create_video(client, internal["access_token"], title=f"{marker} t", category=f"Training-{marker}")
+    reports = await _create_video(client, internal["access_token"], title=f"{marker} r", category=f"Reports-{marker}")
+    assert training["category"] == f"Training-{marker}"
+
+    admin = await signup_organisation_and_login(client, org_name="Cat Filter Org", email=f"a-{uuid.uuid4().hex[:8]}@example.com")
+    headers = {"Authorization": f"Bearer {admin['access_token']}"}
+
+    listing = await client.get("/onboarding/videos", params={"category": f"Training-{marker}"}, headers=headers)
+    ids = {v["id"] for v in listing.json()}
+    assert training["id"] in ids
+    assert reports["id"] not in ids
 
 
 async def test_search_matches_and_logs_event(client: AsyncClient, postgres_available: bool) -> None:

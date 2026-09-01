@@ -49,7 +49,11 @@ def test_s3_requires_bucket_and_region() -> None:
         S3MediaStorage(bucket="", region="eu-west-2")
 
 
-def test_factory_returns_null_by_default() -> None:
+def test_factory_returns_null_when_backend_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Settings:
+        media_storage_backend = "none"
+
+    monkeypatch.setattr(mod, "get_settings", lambda: _Settings())
     mod.get_media_storage.cache_clear()
     try:
         assert isinstance(mod.get_media_storage(), NullMediaStorage)

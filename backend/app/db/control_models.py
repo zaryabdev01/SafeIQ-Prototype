@@ -75,6 +75,7 @@ class OnboardingVideo(ControlBase):
     thumbnail_gradient: Mapped[str] = mapped_column(String(80))
     media_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     media_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(80), nullable=True)
     audience: Mapped[VideoAudience] = mapped_column(
         SAEnum(VideoAudience, name="videoaudience", schema="control"), default=VideoAudience.all
     )
