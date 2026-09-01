@@ -70,7 +70,62 @@ function mapApiVideo(v: ApiOnboardingVideo): OnboardingVideo {
     audience: v.audience,
     order: v.order_index,
     durationSeconds: v.duration_seconds,
+    mediaUrl: v.media_url,
   };
+}
+
+/**
+ * Renders whatever `media_url` the internal CMS attached: an S3/CloudFront
+ * file plays inline, a YouTube/Vimeo link embeds, anything else offers an
+ * "open" link, and no media shows a placeholder instead of a fake button.
+ */
+function VideoPreview({ url, gradient }: { url?: string | null; gradient: string }) {
+  if (!url) {
+    return (
+      <div className={`h-56 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center mb-4`}>
+        <p className="text-sm text-white/90">No video attached yet</p>
+      </div>
+    );
+  }
+  const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]{11})/);
+  if (yt) {
+    return (
+      <iframe
+        className="mb-4 aspect-video w-full rounded-lg"
+        src={`https://www.youtube.com/embed/${yt[1]}`}
+        title="Onboarding video"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+      />
+    );
+  }
+  const vimeo = url.match(/vimeo\.com\/(\d+)/);
+  if (vimeo) {
+    return (
+      <iframe
+        className="mb-4 aspect-video w-full rounded-lg"
+        src={`https://player.vimeo.com/video/${vimeo[1]}`}
+        title="Onboarding video"
+        allow="autoplay; fullscreen; picture-in-picture"
+        allowFullScreen
+      />
+    );
+  }
+  if (/\.(mp4|webm|ogg|mov|m4v|m3u8)(\?|#|$)/i.test(url) || /amazonaws\.com\/|cloudfront\.net\//.test(url)) {
+    return <video className="mb-4 w-full rounded-lg bg-black" src={url} controls preload="metadata" />;
+  }
+  return (
+    <div className={`h-56 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center mb-4`}>
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="rounded-lg bg-white/90 px-3 py-1.5 text-sm font-semibold text-brand hover:bg-white"
+      >
+        Open video ↗
+      </a>
+    </div>
+  );
 }
 
 function myUserType(currentUser: { role: string; teamRole?: string } | null): HelpAudienceType {
@@ -270,11 +325,7 @@ export default function OnboardingPage() {
         <Modal open={!!openVideo} onClose={() => setOpenVideo(null)} title={openVideo?.title ?? ""} widthClass="max-w-xl">
           {openVideo && (
             <div>
-              <div className={`h-56 rounded-lg bg-gradient-to-br ${openVideo.thumbnailGradient} flex items-center justify-center mb-4`}>
-                <div className="w-16 h-16 rounded-full bg-white/25 backdrop-blur flex items-center justify-center">
-                  <Play size={26} className="text-white fill-white ml-1" />
-                </div>
-              </div>
+              <VideoPreview url={openVideo.mediaUrl} gradient={openVideo.thumbnailGradient} />
               <p className="text-sm text-slate-600 mb-3">{openVideo.description}</p>
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <Clock size={12} /> {formatDuration(openVideo.durationSeconds)}

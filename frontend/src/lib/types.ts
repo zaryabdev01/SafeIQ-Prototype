@@ -358,6 +358,7 @@ export interface OnboardingVideo {
   audience: VideoAudience;
   order: number;
   durationSeconds: number;
+  mediaUrl?: string | null; // real (M3) videos: a playable URL - S3/CloudFront file, or a YouTube/Vimeo link
   sprintPosition?: number; // 1-9, position in "Your Help Sprint" - undefined means not part of the sprint
   category?: HelpCategory;
   isGeneralSupport?: boolean; // true = "General Support" (account/accessibility/contacting org); undefined/false = "Platform Help"
