@@ -13,7 +13,8 @@ import { useApp } from "@/lib/store";
 import { isOrgLevel } from "@/lib/permissions";
 import type { AppUser, Role } from "@/lib/types";
 import { apiClient, ApiError, setApiSession, type OrganisationLookup } from "@/lib/apiClient";
-import { mapApiUserToAppUser } from "@/lib/apiMapping";
+import { internalApiClient, setInternalSession } from "@/lib/internalApiClient";
+import { internalUserToAppUser, mapApiUserToAppUser } from "@/lib/apiMapping";
 import { Building2, UserRound, Globe2, Loader2, Mail, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
 
 function destinationFor(u: AppUser | null | undefined) {
@@ -61,7 +62,18 @@ export default function LoginPage() {
       return;
     }
     if (role === "internal") {
-      setError("SafeIQ Internal sign-in isn't wired to the real backend yet - use a demo account below.");
+      setBusy(true);
+      try {
+        const tokens = await internalApiClient.login(email, password);
+        setInternalSession(tokens.access_token, tokens.refresh_token);
+        const me = await internalApiClient.me();
+        hydrateRealAccount(internalUserToAppUser(me));
+        router.push("/internal");
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "Could not sign in to SafeIQ Internal.");
+      } finally {
+        setBusy(false);
+      }
       return;
     }
 

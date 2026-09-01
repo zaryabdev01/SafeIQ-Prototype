@@ -109,7 +109,6 @@ export default function OnboardingPage() {
   const [realSearched, setRealSearched] = useState(false);
   const [realLoading, setRealLoading] = useState(false);
   const [realError, setRealError] = useState("");
-  const [realBusy, setRealBusy] = useState(false);
   const [realTeamForShare, setRealTeamForShare] = useState<ApiUserProfile[]>([]);
   const [committedQuery, setCommittedQuery] = useState("");
   const [analytics, setAnalytics] = useState<ApiOnboardingAnalytics | null>(null);
@@ -189,28 +188,6 @@ export default function OnboardingPage() {
       }
     }
 
-    async function handleAddVideo(data: Omit<OnboardingVideo, "id" | "order"> & { mediaName?: string }) {
-      setRealBusy(true);
-      setRealError("");
-      try {
-        await apiClient.createOnboardingVideo({
-          title: data.title,
-          description: data.description,
-          thumbnail_gradient: data.thumbnailGradient,
-          media_url: data.mediaName || undefined,
-          audience: data.audience,
-          duration_seconds: data.durationSeconds,
-        });
-        await refreshRealVideos();
-        setAddOpen(false);
-        showFlash(`"${data.title}" added to onboarding.`);
-      } catch (err) {
-        setRealError(err instanceof ApiError ? err.message : "Could not add that video.");
-      } finally {
-        setRealBusy(false);
-      }
-    }
-
     async function handleShare(video: OnboardingVideo, target: { email?: string; userId?: string }) {
       try {
         await apiClient.shareOnboardingVideo(video.id, { email: target.email, user_id: target.userId });
@@ -267,9 +244,6 @@ export default function OnboardingPage() {
                 <button onClick={openAnalytics} className="flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/25">
                   <BarChart3 size={14} /> Analytics
                 </button>
-                <button onClick={() => setAddOpen(true)} className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-brand hover:bg-white/90">
-                  <Plus size={14} /> Add video
-                </button>
               </div>
             ) : null
           }
@@ -322,10 +296,6 @@ export default function OnboardingPage() {
             }
           />
         )}
-
-        <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add onboarding video">
-          <AddVideoForm onSubmit={handleAddVideo} busy={realBusy} />
-        </Modal>
 
         <Modal open={analyticsOpen} onClose={() => setAnalyticsOpen(false)} title="Onboarding analytics" widthClass="max-w-lg">
           {analyticsLoading ? (
@@ -729,62 +699,6 @@ export default function OnboardingPage() {
     </AppShell>
   );
 }
-function AddVideoForm({
-  onSubmit,
-  busy,
-}: {
-  onSubmit: (data: Omit<OnboardingVideo, "id" | "order"> & { mediaName?: string }) => void;
-  busy: boolean;
-}) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [audience, setAudience] = useState<VideoAudience>("all");
-  const [gradient, setGradient] = useState(GRADIENTS[0]);
-  const [mediaName, setMediaName] = useState("");
-
-  return (
-    <div>
-      <FormRow label="Thumbnail">
-        <div className="flex gap-2">
-          {GRADIENTS.map((g) => (
-            <button
-              key={g}
-              onClick={() => setGradient(g)}
-              className={`w-8 h-8 rounded-md bg-gradient-to-br ${g} ${gradient === g ? "ring-2 ring-offset-2 ring-brand" : ""}`}
-            />
-          ))}
-        </div>
-      </FormRow>
-      <FormRow label="Title">
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="How to invite your team" />
-      </FormRow>
-      <FormRow label="Description">
-        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-      </FormRow>
-      <FormRow label="Upload media">
-        <label className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 py-4 cursor-pointer hover:border-brand hover:bg-indigo-50/30 text-xs text-slate-500">
-          {mediaName || "Click to choose a video file"}
-          <input type="file" accept="video/*" className="hidden" onChange={(e) => setMediaName(e.target.files?.[0]?.name ?? "video.mp4")} />
-        </label>
-      </FormRow>
-      <FormRow label="End user type">
-        <Select value={audience} onChange={(e) => setAudience(e.target.value as VideoAudience)}>
-          <option value="all">All</option>
-          <option value="organisation">Organisation</option>
-          <option value="employee">Employee</option>
-        </Select>
-      </FormRow>
-      <Button
-        className="w-full"
-        disabled={!title || !description || busy}
-        onClick={() => onSubmit({ title, description, audience, thumbnailGradient: gradient, durationSeconds: 120, mediaName })}
-      >
-        {busy ? <Loader2 size={14} className="animate-spin" /> : null} Add video
-      </Button>
-    </div>
-  );
-}
-
 // Client feedback (17/08/2026, gap-analysis §3): the fuller "Help Hub Manager"
 // authoring form - title/thumbnail/description/user type(s)/category/sprint
 // position/required-recommended/prerequisite/estimated time/AI keywords/

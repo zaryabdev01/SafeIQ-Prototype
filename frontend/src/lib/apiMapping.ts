@@ -1,4 +1,5 @@
 import type { ApiUserProfile } from "./apiClient";
+import type { InternalUser } from "./internalApiClient";
 import type { AppUser, Country, Language } from "./types";
 
 const AVATAR_COLORS = ["#4f46e5", "#0d9488", "#db2777", "#ea580c", "#0891b2", "#7c3aed"];
@@ -34,6 +35,31 @@ export function mapApiUserToAppUser(profile: ApiUserProfile, orgId: string): App
     ipLockEnabled: false,
     allowedContacts: [],
     directSignUp: true,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Bridges a real SafeIQ Internal account (backend/app/db/control_models.py
+ * ::InternalUser) into the mock store's AppUser shape so the shared
+ * Sidebar / AppShell / widget can render it. `orgId` is empty by design -
+ * an internal user is cross-tenant and belongs to no organisation.
+ */
+export function internalUserToAppUser(me: InternalUser): AppUser {
+  return {
+    id: me.id,
+    name: me.name,
+    email: me.email,
+    role: "internal",
+    orgId: "",
+    jobTitle: "SafeIQ Platform Support",
+    avatarColor: colorFor(me.email),
+    country: "United Kingdom",
+    language: "English",
+    twoFactorEnabled: false,
+    ipLockEnabled: false,
+    allowedContacts: [],
+    directSignUp: false,
     createdAt: new Date().toISOString(),
   };
 }

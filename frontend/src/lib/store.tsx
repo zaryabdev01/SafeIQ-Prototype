@@ -64,7 +64,8 @@ import {
   users as seedUsers,
 } from "./mockData";
 import { apiClient, clearApiSession, decodeAccessTokenClaims, getAccessToken, hasApiSession } from "./apiClient";
-import { mapApiUserToAppUser } from "./apiMapping";
+import { clearInternalSession, hasInternalSession, internalApiClient } from "./internalApiClient";
+import { internalUserToAppUser, mapApiUserToAppUser } from "./apiMapping";
 
 function id(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
@@ -323,6 +324,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Same reload recovery for a real SafeIQ Internal session (separate token,
+  // separate control.internal_users account - see lib/internalApiClient.ts).
+  useEffect(() => {
+    if (!hasInternalSession()) return;
+    let cancelled = false;
+    internalApiClient
+      .me()
+      .then((me) => {
+        if (cancelled) return;
+        const user = internalUserToAppUser(me);
+        setState((s) => ({
+          ...s,
+          users: s.users.some((u) => u.id === user.id) ? s.users.map((u) => (u.id === user.id ? user : u)) : [...s.users, user],
+          currentUserId: user.id,
+          isRealSession: true,
+        }));
+      })
+      .catch(() => clearInternalSession());
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const currentUser = useMemo(
     () => state.users.find((u) => u.id === state.currentUserId) ?? null,
     [state.users, state.currentUserId]
@@ -343,6 +367,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     clearApiSession();
+    clearInternalSession();
     setState((s) => ({ ...s, currentUserId: null, isRealSession: false }));
   }, []);
 

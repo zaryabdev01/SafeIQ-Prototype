@@ -66,6 +66,7 @@ const internalNav: NavGroup[] = [
     label: "Console",
     items: [
       { href: "/internal", label: "Overview", icon: Globe2 },
+      { href: "/internal/onboarding", label: "Onboarding", icon: GraduationCap },
       { href: "/rag", label: "RAG", icon: BrainCircuit },
       { href: "/alerts", label: "Alerts", icon: ShieldCheck },
     ],

@@ -306,22 +306,9 @@ export const apiClient = {
     return request<ApiOnboardingVideo[]>("/onboarding/videos", { auth: true, query });
   },
 
-  createOnboardingVideo: (payload: {
-    title: string;
-    description: string;
-    thumbnail_gradient: string;
-    media_url?: string;
-    audience: ApiVideoAudience;
-    duration_seconds: number;
-  }) => request<ApiOnboardingVideo>("/onboarding/videos", { method: "POST", body: payload, auth: true }),
-
-  updateOnboardingVideo: (videoId: string, payload: Partial<{ title: string; description: string; audience: ApiVideoAudience }>) =>
-    request<ApiOnboardingVideo>(`/onboarding/videos/${videoId}`, { method: "PATCH", body: payload, auth: true }),
-
-  reorderOnboardingVideos: (orderedVideoIds: string[]) =>
-    request<ApiOnboardingVideo[]>("/onboarding/videos/reorder", { method: "POST", body: { ordered_video_ids: orderedVideoIds }, auth: true }),
-
-  deleteOnboardingVideo: (videoId: string) => request<void>(`/onboarding/videos/${videoId}`, { method: "DELETE", auth: true }),
+  // Authoring the catalogue (create / edit / reorder / delete) moved to the
+  // SafeIQ Internal console in Milestone 3 - see lib/internalApiClient.ts.
+  // Tenant users only read, view and share it.
 
   recordOnboardingVideoView: (videoId: string) => request<void>(`/onboarding/videos/${videoId}/view`, { method: "POST", auth: true }),
 
