@@ -62,6 +62,35 @@ async def test_smtp_sender_starts_tls_logs_in_and_sends(monkeypatch: pytest.Monk
     assert "123456" in message.get_content()
 
 
+async def test_smtp_sender_attaches_html_alternative_and_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(email_mod.smtplib, "SMTP", _FakeSMTP)
+    _FakeSMTP.instances.clear()
+
+    sender = SmtpEmailSender(
+        host="smtp.example.com",
+        port=587,
+        username="u@example.com",
+        password="pw",
+        from_email="noreply@safeiq.io",
+        from_name="SafeIQ",
+        use_tls=True,
+    )
+    await sender.send(
+        to="dest@example.com",
+        subject="SafeIQ onboarding video: Intro",
+        body="plain text with https://app/onboarding?video=abc",
+        html="<p>rich <b>body</b></p>",
+    )
+
+    message = _FakeSMTP.instances[-1].sent[0]
+    assert message.is_multipart()
+    assert message.get_body(preferencelist=("plain",)).get_content().strip().startswith("plain text")
+    assert "<b>body</b>" in message.get_body(preferencelist=("html",)).get_content()
+    assert message["Reply-To"] == "noreply@safeiq.io"
+    assert message["Message-ID"].endswith("@safeiq.io>")
+    assert message["List-Unsubscribe"] == "<mailto:noreply@safeiq.io?subject=unsubscribe>"
+
+
 async def test_smtp_sender_skips_login_without_username(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(email_mod.smtplib, "SMTP", _FakeSMTP)
     _FakeSMTP.instances.clear()

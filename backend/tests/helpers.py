@@ -13,10 +13,10 @@ _OTP_RE = re.compile(r"verification code is (\d{6})")
 
 class RecordingEmailSender(EmailSender):
     def __init__(self) -> None:
-        self.sent: list[dict[str, str]] = []
+        self.sent: list[dict[str, str | None]] = []
 
-    async def send(self, *, to: str, subject: str, body: str) -> None:
-        self.sent.append({"to": to, "subject": subject, "body": body})
+    async def send(self, *, to: str, subject: str, body: str, html: str | None = None) -> None:
+        self.sent.append({"to": to, "subject": subject, "body": body, "html": html})
 
     def last_otp(self) -> str:
         for message in reversed(self.sent):

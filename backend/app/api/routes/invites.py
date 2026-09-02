@@ -17,8 +17,25 @@ from app.schemas.auth import TokenResponse
 from app.schemas.invite import AcceptInviteRequest, CreateInviteRequest, InvitePreview, InviteResponse
 from app.services import audit as audit_service
 from app.services.email import EmailSender, get_email_sender
+from app.services.email_templates import render_email
 
 router = APIRouter(prefix="/invites", tags=["invites"])
+
+
+async def _send_invite_email(email_sender: EmailSender, *, to: str, link: str, org_name: str, reminder: bool) -> None:
+    subject = "Reminder: you're invited to join SafeIQ" if reminder else f"You're invited to join {org_name} on SafeIQ"
+    await email_sender.send(
+        to=to,
+        subject=subject,
+        body=f"You've been invited to join {org_name} on SafeIQ. Accept your invitation: {link}",
+        html=render_email(
+            heading="You're invited to SafeIQ",
+            intro=f"An administrator at {org_name} has invited you to join their team on SafeIQ.",
+            cta_label="Accept invitation",
+            cta_url=link,
+            outro=f"This link expires in {get_settings().invite_expire_days} days.",
+        ),
+    )
 
 _INVITE_ADMINS = (TeamRole.super_admin, TeamRole.administrator)
 
@@ -71,7 +88,14 @@ async def create_invite(
 
     response = _to_response(invite)
     if invite.email:
-        await email_sender.send(to=invite.email, subject="You're invited to join SafeIQ", body=f"Join here: {response.link}")
+        org = await control_db.get(Organisation, current_user.org_id)
+        await _send_invite_email(
+            email_sender,
+            to=invite.email,
+            link=response.link,
+            org_name=org.name if org else "your organisation",
+            reminder=False,
+        )
     return response
 
 
@@ -89,6 +113,7 @@ async def resend_invite(
     token: str,
     current_user: CurrentUser = Depends(require_role(*_INVITE_ADMINS)),
     db: AsyncSession = Depends(get_tenant_db),
+    control_db: AsyncSession = Depends(get_control_session_dep),
     email_sender: EmailSender = Depends(get_email_sender),
 ) -> InviteResponse:
     result = await db.execute(select(Invite).where(Invite.token == token))
@@ -98,7 +123,14 @@ async def resend_invite(
 
     response = _to_response(invite)
     if invite.email:
-        await email_sender.send(to=invite.email, subject="Reminder: you're invited to join SafeIQ", body=f"Join here: {response.link}")
+        org = await control_db.get(Organisation, current_user.org_id)
+        await _send_invite_email(
+            email_sender,
+            to=invite.email,
+            link=response.link,
+            org_name=org.name if org else "your organisation",
+            reminder=True,
+        )
     await audit_service.record_event(db, event_type="invite.resent", subject_id=invite.id, owner_id=current_user.id)
     return response
 

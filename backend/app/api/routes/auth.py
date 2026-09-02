@@ -27,6 +27,7 @@ from app.schemas.auth import (
 )
 from app.services import audit as audit_service
 from app.services.email import EmailSender, get_email_sender
+from app.services.email_templates import render_email
 from app.services.kyc import get_kyc_provider
 from app.services.otp import generate_otp, hash_otp, otp_expiry
 from app.services.tenant_provisioning import create_organisation
@@ -38,10 +39,17 @@ async def _issue_otp(db: AsyncSession, user: User, email_sender: EmailSender) ->
     code = generate_otp()
     db.add(OtpCode(user_id=user.id, code_hash=hash_otp(code), purpose="email_verification", expires_at=otp_expiry()))
     await db.flush()
+    minutes = get_settings().otp_expire_minutes
     await email_sender.send(
         to=user.email,
         subject="Your SafeIQ verification code",
-        body=f"Your verification code is {code}. It expires in {get_settings().otp_expire_minutes} minutes.",
+        body=f"Your verification code is {code}. It expires in {minutes} minutes.",
+        html=render_email(
+            heading="Verify your email",
+            intro="Enter this code in SafeIQ to finish setting up your account:",
+            highlight=code,
+            outro=f"The code expires in {minutes} minutes. If you didn't request this, you can ignore this email.",
+        ),
     )
 
 

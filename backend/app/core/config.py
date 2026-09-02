@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     otp_expire_minutes: int = 10
     invite_expire_days: int = 14
     magic_link_base_url: str = "http://localhost:3000/invite"
+    # Base URL of the frontend app - used to build links inside emails
+    # (e.g. the "Watch video" link in an onboarding share).
+    app_base_url: str = "http://localhost:3000"
 
     # --- SMTP (email_backend="smtp") ---
     smtp_host: str = ""

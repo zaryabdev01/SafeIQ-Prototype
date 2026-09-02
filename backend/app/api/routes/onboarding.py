@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, get_current_user, get_tenant_db, require_role
+from app.core.config import get_settings
 from app.db.control_models import OnboardingVideo, VideoAudience
 from app.db.session import get_control_session_dep
 from app.models.tenant import OnboardingEvent, OnboardingEventType, TeamRole, User
@@ -29,6 +30,7 @@ from app.schemas.onboarding import (
     serialize_video,
 )
 from app.services.email import EmailSender, get_email_sender
+from app.services.email_templates import render_email
 from app.services.onboarding_search import OnboardingSearchProvider, get_onboarding_search_provider
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
@@ -96,10 +98,18 @@ async def share_video(
     if target_email is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Provide either an email address or a user_id to share with")
 
+    watch_url = f"{get_settings().app_base_url.rstrip('/')}/onboarding?video={video_id}"
     await email_sender.send(
         to=target_email,
         subject=f"SafeIQ onboarding video: {video.title}",
-        body=f"{video.description}\n\nShared with you via SafeIQ onboarding.",
+        body=f"{video.title}\n\n{video.description}\n\nWatch it: {watch_url}",
+        html=render_email(
+            heading=video.title,
+            intro=video.description,
+            cta_label="Watch video",
+            cta_url=watch_url,
+            outro="Shared with you via SafeIQ onboarding.",
+        ),
     )
     tenant_db.add(
         OnboardingEvent(

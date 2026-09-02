@@ -170,7 +170,10 @@ async def test_view_and_share_recorded_in_analytics(client: AsyncClient, postgre
     assert (await client.post(f"/onboarding/videos/{video['id']}/view", headers=headers)).status_code == 204
     share = await client.post(f"/onboarding/videos/{video['id']}/share", json={"email": "colleague@example.com"}, headers=headers)
     assert share.status_code == 204
-    assert any(m["to"] == "colleague@example.com" for m in sender.sent)
+    sent = next(m for m in sender.sent if m["to"] == "colleague@example.com")
+    watch_link = f"/onboarding?video={video['id']}"
+    assert watch_link in sent["body"]
+    assert sent["html"] is not None and watch_link in sent["html"]
 
     body = (await client.get("/onboarding/analytics", headers=headers)).json()
     stats = next(v for v in body["videos"] if v["video_id"] == video["id"])

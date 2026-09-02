@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useApp } from "@/lib/store";
 import { isOrgLevel } from "@/lib/permissions";
@@ -210,6 +210,20 @@ export default function OnboardingPage() {
       .then(setRealTeamForShare)
       .catch(() => {});
   }, [isRealSession]);
+
+  // Deep link from a share email: /onboarding?video=<id> auto-opens that video.
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (!isRealSession || autoOpenedRef.current || typeof window === "undefined") return;
+    const wantId = new URLSearchParams(window.location.search).get("video");
+    if (!wantId) return;
+    const match = realVideos.find((v) => v.id === wantId);
+    if (!match) return;
+    autoOpenedRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: open the shared video once its list has loaded
+    setOpenVideo(mapApiVideo(match));
+    apiClient.recordOnboardingVideoView(match.id).catch(() => {});
+  }, [isRealSession, realVideos]);
 
   function showFlash(msg: string) {
     setFlash(msg);
