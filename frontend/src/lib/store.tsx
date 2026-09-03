@@ -282,7 +282,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    const saved = sessionStorage.getItem(SESSION_KEY);
+    const saved = localStorage.getItem(SESSION_KEY);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time restore of session from browser storage on mount
     if (saved) setState((s) => ({ ...s, currentUserId: saved }));
     setHydrated(true);
@@ -290,8 +290,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!hydrated) return;
-    if (state.currentUserId) sessionStorage.setItem(SESSION_KEY, state.currentUserId);
-    else sessionStorage.removeItem(SESSION_KEY);
+    if (state.currentUserId) localStorage.setItem(SESSION_KEY, state.currentUserId);
+    else localStorage.removeItem(SESSION_KEY);
   }, [state.currentUserId, hydrated]);
 
   // Real backend sessions (see lib/apiClient.ts) need their own reload recovery: the mock store's

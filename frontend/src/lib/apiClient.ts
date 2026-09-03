@@ -6,7 +6,7 @@
  * (Authentication & Multi-Tenant Foundation) and Milestone 3 (Onboarding CMS)
  * so far.
  *
- * Session tokens live in sessionStorage under their own keys, distinct from
+ * Session tokens live in localStorage under their own keys, distinct from
  * the mock store's `safeiq-session-user-id`, so the two systems never collide.
  */
 
@@ -29,19 +29,19 @@ function hasWindow() {
 }
 
 export function getAccessToken(): string | null {
-  return hasWindow() ? sessionStorage.getItem(ACCESS_TOKEN_KEY) : null;
+  return hasWindow() ? localStorage.getItem(ACCESS_TOKEN_KEY) : null;
 }
 
 export function setApiSession(accessToken: string, refreshToken: string) {
   if (!hasWindow()) return;
-  sessionStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-  sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
 }
 
 export function clearApiSession() {
   if (!hasWindow()) return;
-  sessionStorage.removeItem(ACCESS_TOKEN_KEY);
-  sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
 export function hasApiSession(): boolean {

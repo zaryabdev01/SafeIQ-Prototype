@@ -3,7 +3,7 @@
  * `control.internal_users`). Kept separate from lib/apiClient.ts: internal
  * accounts are cross-tenant and their token carries `scope: "internal"`,
  * which the tenant API rejects and vice-versa. Its session token lives
- * under its own sessionStorage keys so the two never collide.
+ * under its own localStorage keys so the two never collide.
  *
  * Milestone 3: internal users own the onboarding video catalogue (tasks
  * 21-22). Tenant users only consume it (tasks 23-26, via lib/apiClient.ts).
@@ -22,19 +22,19 @@ function hasWindow() {
 }
 
 export function getInternalToken(): string | null {
-  return hasWindow() ? sessionStorage.getItem(ACCESS_TOKEN_KEY) : null;
+  return hasWindow() ? localStorage.getItem(ACCESS_TOKEN_KEY) : null;
 }
 
 export function setInternalSession(accessToken: string, refreshToken: string) {
   if (!hasWindow()) return;
-  sessionStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-  sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
 }
 
 export function clearInternalSession() {
   if (!hasWindow()) return;
-  sessionStorage.removeItem(ACCESS_TOKEN_KEY);
-  sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
 export function hasInternalSession(): boolean {
