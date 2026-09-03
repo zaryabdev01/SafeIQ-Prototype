@@ -10,7 +10,7 @@
  * the mock store's `safeiq-session-user-id`, so the two systems never collide.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { buildApiUrl, getApiBase } from "./apiBase";
 
 const ACCESS_TOKEN_KEY = "safeiq-api-access-token";
 const REFRESH_TOKEN_KEY = "safeiq-api-refresh-token";
@@ -68,8 +68,7 @@ export function decodeAccessTokenClaims(token: string): { sub: string; org_id: s
 async function request<T>(path: string, options: { method?: string; body?: unknown; auth?: boolean; query?: Record<string, string> } = {}): Promise<T> {
   const { method = "GET", body, auth = false, query } = options;
 
-  const url = new URL(path, API_BASE);
-  if (query) for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
+  const url = buildApiUrl(path, query);
 
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -81,13 +80,13 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
 
   let response: Response;
   try {
-    response = await fetch(url.toString(), {
+    response = await fetch(url, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new ApiError(0, `Could not reach the SafeIQ API at ${API_BASE} - is the backend running? (docker compose up, in backend/)`);
+    throw new ApiError(0, `Could not reach the SafeIQ API at ${getApiBase()} - is the backend running? (docker compose up, in backend/)`);
   }
 
   if (response.status === 204) return undefined as T;
@@ -227,7 +226,7 @@ export interface ApiLoginEvent {
 }
 
 export const apiClient = {
-  baseUrl: API_BASE,
+  baseUrl: getApiBase(),
 
   signupOrganisation: (payload: { organisation_name: string; sector?: string; full_name: string; email: string; password: string }) =>
     request<SignupResponse>("/auth/signup/organisation", { method: "POST", body: payload }),

@@ -37,6 +37,13 @@
   /* Control radii (kept off Tailwind's scale so `rounded-lg` etc. are untouched) */
   --r-field: 13px;
   --r-control: 10px;
+
+  /* Typography scale — bumped for readability */
+  --text-xs: 0.8125rem;   /* 13px */
+  --text-sm: 0.9375rem;   /* 15px */
+  --text-base: 1.0625rem; /* 17px */
+  --text-lg: 1.25rem;     /* 20px */
+  --text-xl: 1.5rem;      /* 24px */
 }
 
 @theme inline {
@@ -58,6 +65,28 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+input[type="button"]:not(:disabled),
+input[type="submit"]:not(:disabled),
+input[type="reset"]:not(:disabled),
+a[href],
+label:has(input[type="checkbox"]),
+label:has(input[type="radio"]),
+summary {
+  cursor: pointer;
+}
+
+button:disabled,
+input[type="button"]:disabled,
+input[type="submit"]:disabled,
+input[type="reset"]:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
 }
 
 ::-webkit-scrollbar {
@@ -73,11 +102,64 @@ body {
 }
 
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 .animate-fade-in {
-  animation: fade-in 0.15s ease-out;
+  animation: fade-in 0.2s ease-out;
+}
+
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-modal-backdrop {
+  animation: modal-backdrop-in 0.25s ease-out both;
+}
+
+@keyframes modal-panel-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-modal-panel {
+  animation: modal-panel-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes popover-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-popover-in {
+  animation: popover-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-page-enter {
+  animation: page-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sidebar-group-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-sidebar-group {
+  animation: sidebar-group-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes nav-indicator-in {
+  from { opacity: 0; transform: translateY(-50%) scaleY(0.4); }
+  to { opacity: 1; transform: translateY(-50%) scaleY(1); }
+}
+.animate-nav-indicator {
+  animation: nav-indicator-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes card-hover-lift {
+  from { transform: translateY(0); }
+  to { transform: translateY(-2px); }
 }
 
 @keyframes pulse-ring {
@@ -86,4 +168,132 @@ body {
 }
 .animate-pulse-ring {
   animation: pulse-ring 1.4s ease-out infinite;
+}
+
+/* Sidebar scrollbar — subtle on dark shell */
+.sidebar-nav-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar-nav-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+.sidebar-nav-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-shell {
+  position: fixed;
+  isolation: isolate;
+}
+
+@keyframes sidebar-active-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(124, 92, 196, 0.35), 0 4px 14px rgba(73, 46, 161, 0.35); }
+  50% { box-shadow: 0 0 0 4px rgba(124, 92, 196, 0.12), 0 4px 18px rgba(73, 46, 161, 0.45); }
+}
+
+.sidebar-nav-active {
+  background: linear-gradient(90deg, rgba(73, 46, 161, 0.95) 0%, rgba(73, 46, 161, 0.78) 100%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 4px 16px rgba(73, 46, 161, 0.4);
+  animation: sidebar-active-glow 3s ease-in-out infinite;
+}
+
+.sidebar-nav-active-bar {
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.55);
+}
+
+/* Safe area for notched devices */
+.safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.safe-top {
+  padding-top: max(0px, env(safe-area-inset-top));
+}
+
+/* Shared grain texture for auth marketing panel + app sidebar */
+.auth-marketing-panel::before,
+.sidebar-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.22;
+  pointer-events: none;
+  z-index: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+/* Auth form checkbox — solid purple when checked */
+.auth-checkbox {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 2px solid var(--brand);
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.15s ease;
+}
+.auth-checkbox:checked {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.auth-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  left: 4.5px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* Horizontal scroll for dense tables/lists on mobile */
+.scroll-touch {
+  -webkit-overflow-scrolling: touch;
+  overflow-x: auto;
+}
+
+/* Subtle lift on interactive cards */
+.interactive-lift {
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.interactive-lift:hover {
+  transform: translateY(-2px);
+}
+.interactive-lift:active {
+  transform: translateY(0);
+}
+
+/* Stagger children entrance */
+.stagger-children > * {
+  animation: page-enter 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 40ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 80ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 120ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 160ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 200ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-page-enter,
+  .animate-sidebar-group,
+  .animate-nav-indicator,
+  .animate-modal-backdrop,
+  .animate-modal-panel,
+  .animate-popover-in,
+  .sidebar-nav-active {
+    animation: none !important;
+    transition: none !important;
+  }
+  .interactive-lift:hover {
+    transform: none;
+  }
 }

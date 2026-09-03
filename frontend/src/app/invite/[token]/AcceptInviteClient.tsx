@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { useApp } from "@/lib/store";
 import { apiClient, ApiError, decodeAccessTokenClaims, setApiSession, type ApiInvitePreview } from "@/lib/apiClient";
 import { mapApiUserToAppUser } from "@/lib/apiMapping";
+import { parseInviteTokenFromPathname } from "@/lib/invite";
 import { Loader2, ShieldCheck, XCircle, UserRound, Mail, Lock, ArrowRight } from "lucide-react";
 
 /**
@@ -30,8 +31,7 @@ export function AcceptInviteClient({ token: tokenProp }: { token: string }) {
   // way to recover the token the visitor actually requested.
   const [urlToken] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
-    const match = window.location.pathname.match(/\/invite\/([^/]+)\/?$/);
-    return match ? decodeURIComponent(match[1]) : null;
+    return parseInviteTokenFromPathname(window.location.pathname);
   });
   const token = urlToken ?? tokenProp;
   const router = useRouter();

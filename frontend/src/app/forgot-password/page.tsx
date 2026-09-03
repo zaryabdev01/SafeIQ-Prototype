@@ -91,7 +91,7 @@ export default function ForgotPasswordPage() {
       <AuthCard className="flex flex-col gap-8">
         {stage === "email" && (
           <>
-            <AuthCardHeader title="Forgot Password" subtitle="Enter your email address to receive a reset code." />
+            <AuthCardHeader title="Forgot Password" subtitle="Enter your email address to receive a reset code." align="center" />
             <div className="flex flex-col gap-3">
               <AuthInput
                 label="Email"
@@ -121,7 +121,7 @@ export default function ForgotPasswordPage() {
 
         {stage === "org" && (
           <>
-            <AuthCardHeader title="Which organisation?" subtitle="This email belongs to more than one organisation." />
+            <AuthCardHeader title="Which organisation?" subtitle="This email belongs to more than one organisation." align="center" />
             <div className="flex flex-col gap-3">
               <AuthSelect label="Organisation" value={orgId} onChange={(e) => setOrgId(e.target.value)}>
                 {orgChoices.map((o) => (
@@ -149,7 +149,7 @@ export default function ForgotPasswordPage() {
 
         {stage === "otp" && (
           <>
-            <AuthCardHeader title="Enter code" subtitle={`Enter the 6-digit code we sent to ${email || "your email"}.`} />
+            <AuthCardHeader title="Enter code" subtitle={`Enter the 6-digit code we sent to ${email || "your email"}.`} align="center" />
             <div className="flex flex-col items-center gap-4">
               <OtpInput value={code} onChange={setCode} length={6} autoFocus ariaLabel="Reset code" />
               <p className="text-sm text-slate-500">
@@ -184,7 +184,7 @@ export default function ForgotPasswordPage() {
 
         {stage === "password" && (
           <>
-            <AuthCardHeader title="Set New Password" subtitle="Choose a new password for your account." />
+            <AuthCardHeader title="Set New Password" subtitle="Choose a new password for your account." align="center" />
             <div className="flex flex-col gap-3">
               <AuthInput
                 label="New Password"

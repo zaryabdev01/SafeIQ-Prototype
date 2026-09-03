@@ -23,18 +23,18 @@ const features = [
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <header className="max-w-6xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center">
             <ShieldCheck size={17} className="text-white" />
           </div>
           <span className="font-semibold text-slate-900 tracking-tight">SafeIQ</span>
         </div>
-        <div className="flex items-center gap-3">
-          <Link href="/login" className="text-sm font-medium text-slate-600 hover:text-slate-900">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Link href="/login" className="text-[var(--text-sm)] font-medium text-slate-600 hover:text-slate-900 px-2 py-1">
             Sign in
           </Link>
-          <Link href="/signup" className="text-sm font-medium bg-brand text-white px-4 py-2 rounded-lg hover:bg-brand-dark">
+          <Link href="/signup" className="text-[var(--text-sm)] font-semibold bg-brand text-white px-4 py-2.5 rounded-[var(--r-field)] hover:bg-brand-dark transition-colors active:scale-95">
             Get started
           </Link>
         </div>

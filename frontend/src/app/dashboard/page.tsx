@@ -7,6 +7,8 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Field";
+import { Pagination } from "@/components/ui/Pagination";
+import { DashboardStatTile, DashboardSectionTitle, DashboardEmptyState, DashboardInsetItem } from "@/components/dashboard/DashboardPrimitives";
 import { useApp } from "@/lib/store";
 import { timeAgo } from "@/lib/format";
 import {
@@ -28,6 +30,7 @@ import {
   Plus,
   UserPlus,
   ShieldAlert,
+  LayoutDashboard,
 } from "lucide-react";
 import type { AlertSeverity } from "@/lib/types";
 
@@ -56,6 +59,8 @@ function csvCell(value: string | number) {
   return `"${safe.replace(/"/g, '""')}"`;
 }
 
+const ACTIVITY_PAGE_SIZE = 8;
+
 export default function DashboardPage() {
   const {
     currentUser,
@@ -70,6 +75,7 @@ export default function DashboardPage() {
   } = useApp();
 
   const [rangeKey, setRangeKey] = useState("30");
+  const [activityPage, setActivityPage] = useState(1);
   const selectedRange = RANGE_OPTIONS.find((r) => r.key === rangeKey) ?? RANGE_OPTIONS[1];
 
   const rags = useMemo(
@@ -185,9 +191,16 @@ export default function DashboardPage() {
     actions
       .filter((a) => a.createdAt.slice(0, 10) >= rangeStartIso)
       .forEach((a) => items.push({ id: `a-${a.id}`, person: userName(a.assigneeId), text: `Action created: ${a.title}`, at: a.createdAt }));
-    return items.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 10);
+    return items.sort((a, b) => (a.at < b.at ? 1 : -1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ragQuestions, casesInRange, actions, rangeStartIso]);
+
+  const activityTotalPages = Math.max(1, Math.ceil(teamActivity.length / ACTIVITY_PAGE_SIZE));
+  const clampedActivityPage = Math.min(activityPage, activityTotalPages);
+  const pagedActivity = teamActivity.slice(
+    (clampedActivityPage - 1) * ACTIVITY_PAGE_SIZE,
+    clampedActivityPage * ACTIVITY_PAGE_SIZE
+  );
 
   function exportReport() {
     const rows: (string | number)[][] = [
@@ -227,9 +240,16 @@ export default function DashboardPage() {
   });
 
   return (
-    <AppShell title="Dashboard" subtitle="Organisation-wide overview across every RAG you manage">
+    <AppShell title="Dashboard" subtitle="Organisation-wide overview across every RAG you manage" icon={LayoutDashboard}>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <Select value={rangeKey} onChange={(e) => setRangeKey(e.target.value)} className="!w-auto">
+        <Select
+          value={rangeKey}
+          onChange={(e) => {
+            setRangeKey(e.target.value);
+            setActivityPage(1);
+          }}
+          className="!w-auto"
+        >
           {RANGE_OPTIONS.map((r) => (
             <option key={r.key} value={r.key}>
               {r.label}
@@ -242,30 +262,24 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {statTiles.map((s) => (
-          <Link key={s.label} href={s.href}>
-            <Card className="hover:border-brand transition-colors h-full">
-              <CardBody className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${s.tone}`}>
-                  <s.icon size={18} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xl font-semibold text-slate-900 leading-none">{s.value}</p>
-                  <p className="text-xs text-slate-500 mt-1 truncate">{s.label}</p>
-                  {s.caption && <p className="text-[10px] text-slate-400">{s.caption}</p>}
-                </div>
-              </CardBody>
-            </Card>
-          </Link>
+        {statTiles.map((s, i) => (
+          <DashboardStatTile
+            key={s.label}
+            label={s.label}
+            value={s.value}
+            caption={s.caption}
+            icon={s.icon}
+            tone={s.tone}
+            href={s.href}
+            index={i}
+          />
         ))}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6 mb-6">
         <Card id="alerts-by-severity">
           <CardHeader>
-            <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-              <PieChartIcon size={15} /> Alerts by severity
-            </h2>
+            <DashboardSectionTitle icon={PieChartIcon}>Alerts by severity</DashboardSectionTitle>
             <Badge tone="slate">{severityTotal} total</Badge>
           </CardHeader>
           <CardBody>
@@ -303,16 +317,14 @@ export default function DashboardPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-slate-400 text-center py-10">No alerts in this period.</p>
+              <DashboardEmptyState>No alerts in this period.</DashboardEmptyState>
             )}
           </CardBody>
         </Card>
 
         <Card>
           <CardHeader>
-            <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-              <TrendingUp size={15} /> Alerts trend
-            </h2>
+            <DashboardSectionTitle icon={TrendingUp}>Alerts trend</DashboardSectionTitle>
             <Badge tone="slate">{selectedRange.label}</Badge>
           </CardHeader>
           <CardBody>
@@ -330,14 +342,9 @@ export default function DashboardPage() {
           </CardHeader>
           <CardBody className="space-y-2">
             {upcomingTouchPoints.map((b) => (
-              <div key={b.id} className="text-xs bg-slate-50 rounded-lg px-2.5 py-2">
-                <p className="font-medium text-slate-700 truncate">{b.title}</p>
-                <p className="text-slate-400">
-                  {b.date} · {b.time}
-                </p>
-              </div>
+              <DashboardInsetItem key={b.id} title={b.title} meta={`${b.date} · ${b.time}`} />
             ))}
-            {upcomingTouchPoints.length === 0 && <p className="text-xs text-slate-400 text-center py-4">None scheduled.</p>}
+            {upcomingTouchPoints.length === 0 && <DashboardEmptyState>None scheduled.</DashboardEmptyState>}
           </CardBody>
         </Card>
 
@@ -349,14 +356,9 @@ export default function DashboardPage() {
           </CardHeader>
           <CardBody className="space-y-2">
             {recentCommunications.map((q) => (
-              <div key={q.id} className="text-xs bg-slate-50 rounded-lg px-2.5 py-2">
-                <p className="text-slate-700 truncate">{q.text}</p>
-                <p className="text-slate-400">
-                  {userName(q.userId)} · {timeAgo(q.askedAt)}
-                </p>
-              </div>
+              <DashboardInsetItem key={q.id} title={q.text} meta={`${userName(q.userId)} · ${timeAgo(q.askedAt)}`} />
             ))}
-            {recentCommunications.length === 0 && <p className="text-xs text-slate-400 text-center py-4">No conversations yet.</p>}
+            {recentCommunications.length === 0 && <DashboardEmptyState>No conversations yet.</DashboardEmptyState>}
           </CardBody>
         </Card>
 
@@ -395,7 +397,7 @@ export default function DashboardPage() {
               { label: "Manage alert rules", href: "/alert-library", icon: ShieldAlert },
               { label: "Open calendar", href: "/calendar", icon: CalendarClock },
             ].map((qa) => (
-              <Link key={qa.label} href={qa.href} className="flex items-center gap-2 text-xs text-slate-600 hover:text-brand hover:bg-slate-50 rounded-lg px-2 py-1.5 transition-colors">
+              <Link key={qa.label} href={qa.href} className="flex items-center gap-2 rounded-[var(--r-control)] px-2 py-1.5 text-xs text-[var(--text-soft)] transition-colors hover:bg-[var(--surface-warm)] hover:text-brand">
                 <qa.icon size={13} /> {qa.label}
                 <ChevronRight size={12} className="ml-auto text-slate-300" />
               </Link>
@@ -453,37 +455,44 @@ export default function DashboardPage() {
 
       <Card className="mb-4">
         <CardHeader>
-          <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-            <Activity size={15} /> Team activity
-          </h2>
+          <DashboardSectionTitle icon={Activity}>Team activity</DashboardSectionTitle>
           <Badge tone="slate">{selectedRange.label}</Badge>
         </CardHeader>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto scroll-touch">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
+              <tr className="text-left text-xs text-[var(--text-soft)] border-b border-[var(--border-soft)]">
                 <th className="px-5 py-2.5 font-medium">Person</th>
                 <th className="px-5 py-2.5 font-medium">Activity</th>
                 <th className="px-5 py-2.5 font-medium">When</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
-              {teamActivity.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-5 py-3 text-slate-800">{item.person}</td>
-                  <td className="px-5 py-3 text-slate-600">{item.text}</td>
-                  <td className="px-5 py-3 text-slate-400 flex items-center gap-1">
-                    <Clock size={11} /> {timeAgo(item.at)}
+            <tbody className="divide-y divide-[var(--border-soft)]">
+              {pagedActivity.map((item) => (
+                <tr key={item.id} className="transition-colors hover:bg-[var(--surface-warm)]/60">
+                  <td className="px-5 py-3 text-[var(--text-body)]">{item.person}</td>
+                  <td className="px-5 py-3 text-[var(--text-soft)]">{item.text}</td>
+                  <td className="px-5 py-3 text-[var(--text-soft)]">
+                    <span className="flex items-center gap-1">
+                      <Clock size={11} /> {timeAgo(item.at)}
+                    </span>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {teamActivity.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No activity in this period.</p>}
+          {teamActivity.length === 0 && <DashboardEmptyState>No activity in this period.</DashboardEmptyState>}
         </div>
+        <Pagination
+          page={clampedActivityPage}
+          totalPages={activityTotalPages}
+          totalItems={teamActivity.length}
+          pageSize={ACTIVITY_PAGE_SIZE}
+          onChange={setActivityPage}
+        />
       </Card>
 
-      <p className="text-xs text-slate-400 text-center">Data refreshed every 15 minutes.</p>
+      <p className="text-xs text-[var(--text-soft)] text-center">Data refreshed every 15 minutes.</p>
     </AppShell>
   );
 }
@@ -525,9 +534,9 @@ function AlertsTrendChart({ buckets, max }: { buckets: { date: string; count: nu
         }}
       >
         <line x1={padding} y1={padding + innerHeight} x2={width - padding} y2={padding + innerHeight} stroke="#e1e0d9" strokeWidth="1" />
-        <path d={areaPath} fill="#4f46e5" opacity="0.08" stroke="none" />
-        <path d={linePath} fill="none" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx={xFor(buckets.length - 1)} cy={yFor(buckets[buckets.length - 1].count)} r="4" fill="#4f46e5" stroke="#fcfcfb" strokeWidth="2" />
+        <path d={areaPath} fill="var(--brand)" opacity="0.08" stroke="none" />
+        <path d={linePath} fill="none" stroke="var(--brand)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx={xFor(buckets.length - 1)} cy={yFor(buckets[buckets.length - 1].count)} r="4" fill="var(--brand)" stroke="#fcfcfb" strokeWidth="2" />
         <text
           x={xFor(buckets.length - 1) - 6}
           y={yFor(buckets[buckets.length - 1].count) - 8}
@@ -545,7 +554,7 @@ function AlertsTrendChart({ buckets, max }: { buckets: { date: string; count: nu
         {hoverIndex !== null && (
           <>
             <line x1={xFor(hoverIndex)} y1={padding} x2={xFor(hoverIndex)} y2={padding + innerHeight} stroke="#c3c2b7" strokeWidth="1" strokeDasharray="3 3" />
-            <circle cx={xFor(hoverIndex)} cy={yFor(buckets[hoverIndex].count)} r="5" fill="#4f46e5" stroke="#fff" strokeWidth="2" />
+            <circle cx={xFor(hoverIndex)} cy={yFor(buckets[hoverIndex].count)} r="5" fill="var(--brand)" stroke="#fff" strokeWidth="2" />
           </>
         )}
       </svg>

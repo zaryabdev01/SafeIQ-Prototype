@@ -24,13 +24,13 @@ export const SEVERITY_BEHAVIOUR: Record<AlertSeverity, string> = {
 
 export function SeverityLegend() {
   return (
-    <div className="rounded-lg border border-slate-200 divide-y divide-slate-100 text-xs mb-4">
+    <div className="rounded-[var(--r-field)] border border-[var(--border-default)] divide-y divide-[var(--border-soft)] text-[var(--text-sm)] mb-4">
       {(Object.keys(SEVERITY_BEHAVIOUR) as AlertSeverity[]).map((s) => (
-        <div key={s} className="flex items-start gap-2.5 px-3 py-2">
+        <div key={s} className="flex items-start gap-3 px-4 py-3">
           <Badge tone={severityTone(s)} className="capitalize shrink-0">
             {s}
           </Badge>
-          <span className="text-slate-500">{SEVERITY_BEHAVIOUR[s]}</span>
+          <span className="text-[var(--text-soft)]">{SEVERITY_BEHAVIOUR[s]}</span>
         </div>
       ))}
     </div>
@@ -75,22 +75,31 @@ export function GlobalScopeConfirmModal({
   affectedLabel: string;
   busy?: boolean;
 }) {
+  const footer = (
+    <div className="flex gap-3">
+      <Button variant="outline" className="flex-1" size="lg" onClick={onClose}>
+        Cancel
+      </Button>
+      <Button className="flex-1" size="lg" onClick={onConfirm} disabled={busy}>
+        Confirm &amp; activate globally
+      </Button>
+    </div>
+  );
+
   return (
-    <Modal open={open} onClose={onClose} title="Confirm global alert rule">
-      <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 text-amber-700 text-xs p-3 mb-4">
-        <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Confirm global alert rule"
+      description="This change applies across your entire organisation."
+      footer={footer}
+    >
+      <div className="flex items-start gap-3 rounded-[var(--r-field)] border border-amber-200/80 bg-amber-50 p-4 text-[var(--text-sm)] text-amber-900">
+        <AlertTriangle size={20} className="shrink-0 mt-0.5" />
         <span>
-          You&apos;re about to make this rule apply organisation-wide - affecting {affectedLabel}. This is a wider-reaching change than a
-          rule scoped to one employee or one RAG, so it needs a second confirmation.
+          You&apos;re about to make this rule apply organisation-wide — affecting {affectedLabel}. This is a wider-reaching
+          change than a rule scoped to one employee or one RAG, so it needs a second confirmation.
         </span>
-      </div>
-      <div className="flex gap-2">
-        <Button variant="outline" className="flex-1" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button className="flex-1" onClick={onConfirm} disabled={busy}>
-          Confirm &amp; activate globally
-        </Button>
       </div>
     </Modal>
   );

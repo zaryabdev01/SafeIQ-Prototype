@@ -15,7 +15,7 @@ import type { AppUser, Role } from "@/lib/types";
 import { apiClient, ApiError, setApiSession, type OrganisationLookup } from "@/lib/apiClient";
 import { internalApiClient, setInternalSession } from "@/lib/internalApiClient";
 import { internalUserToAppUser, mapApiUserToAppUser } from "@/lib/apiMapping";
-import { Building2, UserRound, Globe2, Loader2, Mail, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Building2, UserRound, Monitor, Loader2, Mail, Lock, Eye, EyeOff, LogIn } from "lucide-react";
 
 function destinationFor(u: AppUser | null | undefined) {
   if (!u) return "/employee";
@@ -33,7 +33,7 @@ function nextTarget(): string | null {
 const ROLE_TABS = [
   { value: "organisation" as Role, label: "Organisation", icon: Building2 },
   { value: "employee" as Role, label: "Employee", icon: UserRound },
-  { value: "internal" as Role, label: "Internal", icon: Globe2 },
+  { value: "internal" as Role, label: "Internal", icon: Monitor },
 ];
 
 export default function LoginPage() {
@@ -127,7 +127,7 @@ export default function LoginPage() {
         </span>
       }
     >
-      <AuthCard className="flex flex-col gap-8">
+      <AuthCard className="flex flex-col gap-6">
         <AuthCardHeader title="Welcome back" subtitle="Sign in to your SafeIQ account." align="center" />
 
         <SegmentedTabs
@@ -141,7 +141,7 @@ export default function LoginPage() {
           }}
         />
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <AuthInput
             label="Email"
             type="email"
@@ -160,7 +160,7 @@ export default function LoginPage() {
             type={showPassword ? "text" : "password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
+            placeholder="12345678"
             icon={<Lock size={16} />}
             autoComplete="current-password"
             trailing={
@@ -168,7 +168,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
-                className="flex"
+                className="flex text-[#9a93a1] hover:text-[var(--text-soft)]"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -185,40 +185,45 @@ export default function LoginPage() {
             </AuthSelect>
           )}
 
-          <div className="flex items-center justify-between gap-4 pt-1">
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
+          <div className="flex items-center justify-between gap-4">
+            <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--text-strong)]">
               <input
                 type="checkbox"
                 checked={remember}
                 onChange={(e) => setRemember(e.target.checked)}
-                className="h-4 w-4 rounded accent-[var(--brand-dark)]"
+                className="auth-checkbox"
               />
               Remember For 30 Days
             </label>
-            <Link href="/forgot-password" className="text-sm font-bold text-[var(--brand-dark)] hover:underline">
+            <Link href="/forgot-password" className="text-[14px] font-bold text-[var(--brand-dark)] hover:underline">
               Forgot Password
             </Link>
           </div>
 
           {error && <p className="text-xs text-red-600">{error}</p>}
 
-          <Button type="submit" className="mt-1 w-full rounded-[var(--r-control)]" size="lg" disabled={busy}>
+          <Button
+            type="submit"
+            className="mt-1 w-full rounded-[14px] text-[15px] font-bold"
+            size="lg"
+            disabled={busy}
+          >
             {busy ? (
               <>
-                <Loader2 size={14} className="animate-spin" /> Signing in...
+                <Loader2 size={16} className="animate-spin" /> Signing in...
               </>
             ) : (
               <>
-                Sign In <ArrowRight size={16} />
+                Sign In <LogIn size={16} strokeWidth={2.25} />
               </>
             )}
           </Button>
         </form>
 
-        <div className="flex items-center gap-3 text-xs text-slate-400">
-          <div className="h-px flex-1 bg-slate-200" />
+        <div className="flex items-center gap-3 text-xs text-[#9a93a1]">
+          <div className="h-px flex-1 bg-[#e4dfe8]" />
           Or explore instantly as
-          <div className="h-px flex-1 bg-slate-200" />
+          <div className="h-px flex-1 bg-[#e4dfe8]" />
         </div>
 
         <div className="flex flex-col gap-2">
@@ -226,12 +231,12 @@ export default function LoginPage() {
             <button
               key={u.id}
               onClick={() => quickLogin(u.id)}
-              className="flex w-full items-center gap-3 rounded-[var(--r-control)] border border-slate-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-brand hover:bg-[var(--brand-tint)]/40"
+              className="flex w-full items-center gap-3 rounded-[13px] border border-[#e4dfe8] bg-[#faf8fb] px-3 py-2.5 text-left transition-colors hover:border-brand hover:bg-white"
             >
               <Avatar name={u.name} color={u.avatarColor} size={32} />
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-800">{u.name}</p>
-                <p className="truncate text-xs text-slate-500">{u.jobTitle}</p>
+                <p className="truncate text-sm font-semibold text-[var(--text-strong)]">{u.name}</p>
+                <p className="truncate text-xs text-[var(--text-soft)]">{u.jobTitle}</p>
               </div>
             </button>
           ))}

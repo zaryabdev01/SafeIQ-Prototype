@@ -12,7 +12,7 @@
 import { ApiError } from "./apiClient";
 import type { ApiVideoAudience } from "./apiClient";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { buildApiUrl, getApiBase } from "./apiBase";
 
 const ACCESS_TOKEN_KEY = "safeiq-internal-access-token";
 const REFRESH_TOKEN_KEY = "safeiq-internal-refresh-token";
@@ -55,15 +55,17 @@ async function request<T>(
     headers.Authorization = `Bearer ${token}`;
   }
 
+  const url = buildApiUrl(path);
+
   let response: Response;
   try {
-    response = await fetch(new URL(path, API_BASE).toString(), {
+    response = await fetch(url, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new ApiError(0, `Could not reach the SafeIQ API at ${API_BASE}`);
+    throw new ApiError(0, `Could not reach the SafeIQ API at ${getApiBase()}`);
   }
 
   if (response.status === 204) return undefined as T;

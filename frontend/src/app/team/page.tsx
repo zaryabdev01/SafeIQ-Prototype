@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { useApp } from "@/lib/store";
 import { timeAgo } from "@/lib/format";
-import { Send, Link2, RotateCcw, XCircle, Copy, ChevronRight, ChevronLeft, Loader2, Search } from "lucide-react";
+import { Pagination } from "@/components/ui/Pagination";
+import { Send, Link2, RotateCcw, XCircle, Copy, ChevronRight, Loader2, Search } from "lucide-react";
 import type { InviteStatus, TeamRole } from "@/lib/types";
 import { apiClient, ApiError, type ApiInvite, type ApiTeamRole, type ApiUserProfile } from "@/lib/apiClient";
 
@@ -26,38 +27,6 @@ const statusTone: Record<InviteStatus, "amber" | "green" | "slate"> = {
   accepted: "green",
   cancelled: "slate",
 };
-
-function Pager({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (p: number) => void }) {
-  if (totalPages <= 1) return null;
-  const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
-  return (
-    <div className="px-5 py-3 flex items-center justify-center gap-1 border-t border-slate-100">
-      <button
-        onClick={() => onChange(Math.max(1, page - 1))}
-        disabled={page === 1}
-        className="p-1.5 rounded-md text-slate-400 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
-      >
-        <ChevronLeft size={14} />
-      </button>
-      {pages.map((p) => (
-        <button
-          key={p}
-          onClick={() => onChange(p)}
-          className={`w-7 h-7 text-xs rounded-md font-medium ${p === page ? "bg-brand text-white" : "text-slate-500 hover:bg-slate-100"}`}
-        >
-          {p}
-        </button>
-      ))}
-      <button
-        onClick={() => onChange(Math.min(totalPages, page + 1))}
-        disabled={page === totalPages}
-        className="p-1.5 rounded-md text-slate-400 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent"
-      >
-        <ChevronRight size={14} />
-      </button>
-    </div>
-  );
-}
 
 function AvatarStack({ people }: { people: { id: string; name: string; avatarColor?: string }[] }) {
   if (people.length === 0) return <span className="text-xs text-slate-300">-</span>;
@@ -248,11 +217,22 @@ export default function TeamPage() {
     return (inv.email ?? "open invite link").toLowerCase().includes(q) || inv.status.toLowerCase().includes(q);
   });
 
+  const totalRealInvitePages = Math.max(1, Math.ceil(filteredRealInvites.length / PAGE_SIZE));
+  const clampedRealInvitePage = Math.min(invitePage, totalRealInvitePages);
+  const pagedRealInvites = filteredRealInvites.slice(
+    (clampedRealInvitePage - 1) * PAGE_SIZE,
+    clampedRealInvitePage * PAGE_SIZE
+  );
+
   const filteredRealTeam = realTeam.filter((u) => {
     const q = teamSearch.trim().toLowerCase();
     if (!q) return true;
     return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.job_title ?? "").toLowerCase().includes(q);
   });
+
+  const totalRealTeamPages = Math.max(1, Math.ceil(filteredRealTeam.length / PAGE_SIZE));
+  const clampedRealTeamPage = Math.min(teamPage, totalRealTeamPages);
+  const pagedRealTeam = filteredRealTeam.slice((clampedRealTeamPage - 1) * PAGE_SIZE, clampedRealTeamPage * PAGE_SIZE);
 
   // --- Mock mode (everything else - RAGs/etc have no backend yet) ---
   const employees = users.filter((u) => u.role === "employee" && u.orgId === currentUser?.orgId);
@@ -429,9 +409,9 @@ export default function TeamPage() {
             </button>
           </div>
         )}
-        <div className={`divide-y divide-slate-100 ${isRealSession ? "max-h-[22.5rem] overflow-y-auto" : ""}`}>
+        <div className="divide-y divide-[var(--border-soft)]">
           {isRealSession
-            ? filteredRealInvites.map((inv) => (
+            ? pagedRealInvites.map((inv) => (
                 <div key={inv.id} className="px-5 py-3.5 flex items-center gap-3">
                   {inv.status === "pending" && (
                     <input
@@ -489,7 +469,13 @@ export default function TeamPage() {
             <p className="px-5 py-6 text-sm text-slate-400 text-center">No invites sent yet.</p>
           )}
         </div>
-        {!isRealSession && <Pager page={clampedInvitePage} totalPages={totalInvitePages} onChange={setInvitePage} />}
+        <Pagination
+          page={isRealSession ? clampedRealInvitePage : clampedInvitePage}
+          totalPages={isRealSession ? totalRealInvitePages : totalInvitePages}
+          totalItems={isRealSession ? filteredRealInvites.length : invites.length}
+          pageSize={PAGE_SIZE}
+          onChange={setInvitePage}
+        />
       </Card>
 
       <Card>
@@ -551,9 +537,9 @@ export default function TeamPage() {
             </button>
           </div>
         )}
-        <div className={`divide-y divide-slate-100 ${isRealSession ? "max-h-[22.5rem] overflow-y-auto" : ""}`}>
+        <div className="divide-y divide-[var(--border-soft)]">
           {isRealSession
-            ? filteredRealTeam.map((u) => (
+            ? pagedRealTeam.map((u) => (
                 <div key={u.id} className="px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors">
                   <Link href={`/team/${u.id}`} className="flex items-center gap-3 flex-1 min-w-0">
                     <Avatar name={u.name} color="#4f46e5" size={36} />
@@ -620,20 +606,24 @@ export default function TeamPage() {
                         </option>
                       ))}
                     </Select>
-                    <div className="flex flex-col items-end gap-0.5 w-24 shrink-0">
-                      <Badge tone="indigo">
-                        {codes.length} RAG{codes.length === 1 ? "" : "s"}
-                      </Badge>
-                      <Link href={`/team/${u.id}#assigned-rags`} className="text-[11px] text-brand font-medium hover:underline">
-                        View
+                    <div className="w-24 shrink-0 flex justify-end">
+                      <Link
+                        href={`/team/${u.id}#assigned-rags`}
+                        className="rounded-full transition-opacity hover:opacity-80"
+                      >
+                        <Badge tone="indigo">
+                          {codes.length} RAG{codes.length === 1 ? "" : "s"}
+                        </Badge>
                       </Link>
                     </div>
-                    <div className="flex flex-col items-end gap-0.5 w-24 shrink-0">
-                      <Badge tone={liveAlerts.length > 0 ? "red" : "slate"}>
-                        {liveAlerts.length} alert{liveAlerts.length === 1 ? "" : "s"}
-                      </Badge>
-                      <Link href={`/team/${u.id}#alerts-touchpoints`} className="text-[11px] text-brand font-medium hover:underline">
-                        View
+                    <div className="w-24 shrink-0 flex justify-end">
+                      <Link
+                        href={`/team/${u.id}#alerts-touchpoints`}
+                        className="rounded-full transition-opacity hover:opacity-80"
+                      >
+                        <Badge tone={liveAlerts.length > 0 ? "red" : "slate"}>
+                          {liveAlerts.length} alert{liveAlerts.length === 1 ? "" : "s"}
+                        </Badge>
                       </Link>
                     </div>
                     <div className="w-16 shrink-0 flex justify-center" title="Managers / allocated by">
@@ -649,7 +639,13 @@ export default function TeamPage() {
             <p className="px-5 py-6 text-sm text-slate-400 text-center">No team members yet.</p>
           )}
         </div>
-        {!isRealSession && <Pager page={clampedTeamPage} totalPages={totalTeamPages} onChange={setTeamPage} />}
+        <Pagination
+          page={isRealSession ? clampedRealTeamPage : clampedTeamPage}
+          totalPages={isRealSession ? totalRealTeamPages : totalTeamPages}
+          totalItems={isRealSession ? filteredRealTeam.length : filteredEmployees.length}
+          pageSize={PAGE_SIZE}
+          onChange={setTeamPage}
+        />
       </Card>
     </AppShell>
   );

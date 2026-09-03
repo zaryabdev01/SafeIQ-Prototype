@@ -48,11 +48,12 @@ export function WidgetRagPanel() {
   }
 
   function submitQuestion() {
-    if (!question.trim() || !currentUser || !activeRagId) return;
+    const text = question.trim();
+    if (!text || !currentUser || !activeRagId || thinking) return;
     setThinking(true);
-    setTimeout(() => {
-      askRag(activeRagId, currentUser.id, question.trim(), voiceMode);
-      setQuestion("");
+    setQuestion("");
+    window.setTimeout(() => {
+      askRag(activeRagId, currentUser.id, text, voiceMode);
       setThinking(false);
     }, 550);
   }
@@ -67,7 +68,7 @@ export function WidgetRagPanel() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-3 border-b border-slate-100 space-y-2 overflow-y-auto max-h-40">
+      <div className="shrink-0 max-h-40 space-y-2 overflow-y-auto border-b border-slate-100 p-3">
         {myAssignments.length === 0 && <p className="text-xs text-slate-400 px-1 py-2">No RAGs assigned to you yet.</p>}
         {myAssignments.map((a) => {
           const rag = rags.find((r) => r.id === a.ragId);
@@ -109,7 +110,7 @@ export function WidgetRagPanel() {
         })}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-3">
         {!activeRag && <p className="text-xs text-slate-400 text-center py-6">Switch on a RAG above to start asking it questions.</p>}
         {activeRag && (
           <>
@@ -131,9 +132,10 @@ export function WidgetRagPanel() {
                       <span>{q.answer}</span>
                     </div>
                     <button
+                      type="button"
                       onClick={() => flagAnswer(q.id)}
                       disabled={flagged.has(q.id)}
-                      className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-red-600 disabled:text-emerald-600 disabled:cursor-default"
+                      className="flex cursor-pointer items-center gap-1 text-[10px] text-slate-400 hover:text-red-600 disabled:cursor-not-allowed disabled:text-emerald-600"
                     >
                       <Flag size={10} /> {flagged.has(q.id) ? "Flagged for review" : "Flag this answer"}
                     </button>
@@ -152,11 +154,12 @@ export function WidgetRagPanel() {
       </div>
 
       {activeRag && (
-        <div className="p-3 border-t border-slate-100 flex gap-2">
+        <div className="shrink-0 flex items-center gap-2 border-t border-slate-100 p-3">
           <button
+            type="button"
             onClick={() => setVoiceMode((v) => !v)}
             title={voiceMode ? "Voice mode on - speak, agent replies aloud" : "Switch to voice mode"}
-            className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+            className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors ${
               voiceMode ? "bg-brand text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
             }`}
           >
@@ -165,11 +168,21 @@ export function WidgetRagPanel() {
           <Input
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submitQuestion()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                submitQuestion();
+              }
+            }}
             placeholder={voiceMode ? "Voice mode on - type to simulate speaking..." : "Ask this RAG a question..."}
-            className="text-sm"
+            className="min-w-0 flex-1 text-sm"
           />
-          <Button onClick={submitQuestion} disabled={thinking}>
+          <Button
+            onClick={submitQuestion}
+            disabled={thinking || !question.trim()}
+            className="shrink-0"
+            aria-label="Send question"
+          >
             {thinking ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
           </Button>
         </div>

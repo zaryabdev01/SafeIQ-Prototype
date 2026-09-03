@@ -1,5 +1,6 @@
 "use client";
 
+import { Pagination } from "@/components/ui/Pagination";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Card, CardBody } from "@/components/ui/Card";
@@ -18,6 +19,8 @@ export default function AlertsPage() {
   const [date, setDate] = useState("");
   const [member, setMember] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 8;
 
   const isInternal = currentUser?.role === "internal";
   const orgCases = useMemo(
@@ -39,6 +42,9 @@ export default function AlertsPage() {
   });
 
   const sorted = [...filtered].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const clampedPage = Math.min(page, totalPages);
+  const pagedAlerts = sorted.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE);
   const orgEmployees = users.filter((u) => u.role === "employee" && (isInternal || u.orgId === currentUser?.orgId));
 
   function userName(id: string) {
@@ -60,16 +66,16 @@ export default function AlertsPage() {
         <CardBody className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search alerts..." className="pl-8" />
+            <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search alerts..." className="pl-8" />
           </div>
-          <Select value={priority} onChange={(e) => setPriority(e.target.value as AlertSeverity | "")} className="sm:w-40">
+          <Select value={priority} onChange={(e) => { setPriority(e.target.value as AlertSeverity | ""); setPage(1); }} className="sm:w-40">
             <option value="">All priorities</option>
             <option value="critical">Critical</option>
             <option value="high">High</option>
             <option value="medium">Medium</option>
             <option value="low">Low</option>
           </Select>
-          <Select value={member} onChange={(e) => setMember(e.target.value)} className="sm:w-48">
+          <Select value={member} onChange={(e) => { setMember(e.target.value); setPage(1); }} className="sm:w-48">
             <option value="">All team members</option>
             {orgEmployees.map((u) => (
               <option key={u.id} value={u.id}>
@@ -77,16 +83,17 @@ export default function AlertsPage() {
               </option>
             ))}
           </Select>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="sm:w-44" />
+          <Input type="date" value={date} onChange={(e) => { setDate(e.target.value); setPage(1); }} className="sm:w-44" />
         </CardBody>
       </Card>
 
-      <div className="space-y-3">
-        {sorted.map((c) => {
-          const isExpanded = expanded === c.id;
-          return (
-            <Card key={c.id}>
-              <button onClick={() => setExpanded(isExpanded ? null : c.id)} className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-slate-50">
+      <Card>
+        <div className="divide-y divide-[var(--border-soft)]">
+          {pagedAlerts.map((c) => {
+            const isExpanded = expanded === c.id;
+            return (
+              <div key={c.id}>
+                <button onClick={() => setExpanded(isExpanded ? null : c.id)} className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-[var(--surface-warm)] transition-colors">
                 <ShieldAlert size={16} className="text-slate-400 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-slate-800">
@@ -101,20 +108,26 @@ export default function AlertsPage() {
                 <Badge tone={c.status === "open" ? "amber" : "green"}>{c.status}</Badge>
                 <ChevronDown size={16} className={`text-slate-300 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
               </button>
-              {isExpanded && (
-                <div className="px-5 pb-5">
-                  <AlertCaseThread caseItem={c} canClose={true} currentUserId={currentUser?.id ?? "u-admin"} />
-                </div>
-              )}
-            </Card>
-          );
-        })}
-        {sorted.length === 0 && (
-          <Card>
-            <CardBody className="text-center py-12 text-sm text-slate-400">No alerts match these filters.</CardBody>
-          </Card>
-        )}
-      </div>
+                {isExpanded && (
+                  <div className="px-5 pb-5 border-t border-[var(--border-soft)] bg-[var(--surface-warm)]/50">
+                    <AlertCaseThread caseItem={c} canClose={true} currentUserId={currentUser?.id ?? "u-admin"} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {sorted.length === 0 && (
+            <p className="px-5 py-12 text-center text-sm text-[var(--text-soft)]">No alerts match these filters.</p>
+          )}
+        </div>
+        <Pagination
+          page={clampedPage}
+          totalPages={totalPages}
+          totalItems={sorted.length}
+          pageSize={PAGE_SIZE}
+          onChange={setPage}
+        />
+      </Card>
     </AppShell>
   );
 }

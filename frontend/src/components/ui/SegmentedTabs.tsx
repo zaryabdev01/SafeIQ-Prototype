@@ -26,7 +26,7 @@ export function SegmentedTabs<T extends string>({
 }) {
   return (
     <div
-      className={`inline-flex gap-1 rounded-[var(--r-field)] border border-[var(--border-default)] bg-[var(--surface-warm)] p-[5px] ${
+      className={`inline-flex gap-1 rounded-[14px] border border-[#e4dfe8] bg-white p-1 ${
         fluid ? "flex w-full" : ""
       } ${className}`}
     >
@@ -38,16 +38,22 @@ export function SegmentedTabs<T extends string>({
             key={opt.value}
             type="button"
             onClick={() => onChange(opt.value)}
-            className={`flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--r-control)] px-3 py-2.5 text-[13.5px] font-semibold transition-colors ${
+            className={`flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[11px] px-2 py-2.5 text-[13px] font-semibold transition-colors ${
               fluid ? "min-w-0 flex-1" : ""
             } ${
               active
-                ? "bg-brand text-white shadow-[0_1px_2px_rgba(31,20,38,0.1)]"
-                : "text-[var(--brand-darker)] hover:text-brand"
+                ? "bg-brand text-white shadow-[0_1px_3px_rgba(73,46,161,0.35)]"
+                : "text-[var(--brand-darker)] hover:bg-[#faf8fb]"
             }`}
           >
-            {Icon && <Icon size={15} className="shrink-0" />}
-            <span className={fluid ? "truncate" : ""}>{opt.label}</span>
+            {Icon && (
+              <Icon
+                size={15}
+                className={`shrink-0 ${active ? "text-white" : "text-[#9a93a1]"}`}
+                strokeWidth={2}
+              />
+            )}
+            <span>{opt.label}</span>
           </button>
         );
       })}

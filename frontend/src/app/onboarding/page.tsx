@@ -15,6 +15,7 @@ import { VideoCard, type VideoCardAction } from "@/components/onboarding/VideoCa
 import { ShareModal } from "@/components/onboarding/ShareModal";
 import { formatDuration, timeAgo } from "@/lib/format";
 import { TEAMS, DEPARTMENTS, LOCATIONS } from "@/lib/mockData";
+import { Pagination } from "@/components/ui/Pagination";
 import {
   Play,
   Plus,
@@ -22,8 +23,6 @@ import {
   Send,
   Loader2,
   BarChart3,
-  ChevronLeft,
-  ChevronRight,
   LayoutGrid,
   Headphones,
   History,
@@ -660,34 +659,16 @@ export default function OnboardingPage() {
 
       {visible.length === 0 && !noMatches && <p className="py-16 text-center text-sm text-slate-400">No help items to show for this filter.</p>}
 
-      {!viewAll && totalPages > 1 && (
-        <div className="mt-6 flex items-center justify-end gap-1.5 text-sm">
-          <button
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={clampedPage === 0}
-            className="flex items-center gap-1 rounded-[var(--r-control)] px-3 py-1.5 font-medium text-[var(--text-soft)] hover:bg-slate-100 disabled:opacity-30"
-          >
-            <ChevronLeft size={14} /> Previous
-          </button>
-          {Array.from({ length: totalPages }).map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setPage(i)}
-              className={`h-8 min-w-8 rounded-[var(--r-control)] px-2 text-sm font-semibold ${
-                i === clampedPage ? "bg-brand text-white" : "text-[var(--text-soft)] hover:bg-slate-100"
-              }`}
-            >
-              {i + 1}
-            </button>
-          ))}
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-            disabled={clampedPage >= totalPages - 1}
-            className="flex items-center gap-1 rounded-[var(--r-control)] px-3 py-1.5 font-medium text-[var(--text-soft)] hover:bg-slate-100 disabled:opacity-30"
-          >
-            Next <ChevronRight size={14} />
-          </button>
-        </div>
+      {!viewAll && (
+        <Pagination
+          page={clampedPage + 1}
+          totalPages={totalPages}
+          totalItems={filtered.length}
+          pageSize={PAGE_SIZE}
+          onChange={(p) => setPage(p - 1)}
+          className="mt-6 !border-t-0 !px-0"
+          align="end"
+        />
       )}
 
       <Modal open={!!openVideo} onClose={() => setOpenVideo(null)} title={openVideo?.title ?? ""} widthClass="max-w-xl">

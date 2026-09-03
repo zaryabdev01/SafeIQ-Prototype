@@ -20,12 +20,6 @@ const ALL_TARGETS: { key: ShareChannel; label: string; icon: LucideIcon }[] = [
 const USER_CHANNELS: ShareChannel[] = ["whatsapp", "messenger", "inplatform"];
 const GROUP_CHANNELS: ShareChannel[] = ["team", "department", "location"];
 
-/**
- * Multi-channel "Share" modal from the M3 Figma: a grid of target tiles, a
- * contextual field per target, a message box and a Share button. Emits a
- * normalised `{ channel, target, message }` so both onboarding branches can
- * adapt it to their own handler.
- */
 export function ShareModal({
   open,
   onClose,
@@ -63,25 +57,44 @@ export function ShareModal({
 
   const disabled = channel === "email" ? !email : GROUP_CHANNELS.includes(channel) ? !groupValue : !userId;
 
+  const footer = (
+    <div className="flex justify-end gap-3">
+      <Button variant="outline" onClick={onClose}>Cancel</Button>
+      <Button onClick={submit} disabled={disabled} size="lg">
+        Share <Share2 size={18} />
+      </Button>
+    </div>
+  );
+
   return (
-    <Modal open={open} onClose={onClose} title="Share" widthClass="max-w-md">
-      <div className="flex flex-col gap-5">
-        <p className="text-xs text-[var(--text-soft)]">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Share"
+      description="Choose how you want to send this help item."
+      widthClass="max-w-lg"
+      footer={footer}
+    >
+      <div className="flex flex-col gap-6">
+        <p className="text-[var(--text-sm)] text-[var(--text-soft)]">
           Sharing <span className="font-semibold text-[var(--text-body)]">&ldquo;{videoTitle}&rdquo;</span>
         </p>
 
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           {targets.map((t) => {
             const active = t.key === channel;
             return (
               <button
                 key={t.key}
+                type="button"
                 onClick={() => setChannel(t.key)}
-                className={`flex flex-col items-center justify-center gap-1.5 rounded-[var(--r-control)] px-1 py-3 text-[12px] font-semibold transition-colors ${
-                  active ? "bg-brand text-white" : "bg-[var(--brand-tint-2)] text-[var(--text-body)] hover:bg-[var(--brand-soft)]/50"
+                className={`flex flex-col items-center justify-center gap-2 rounded-[var(--r-field)] px-2 py-4 text-[var(--text-xs)] font-semibold transition-all duration-200 ${
+                  active
+                    ? "bg-brand text-white shadow-md shadow-brand/25 scale-[1.02]"
+                    : "bg-[var(--brand-tint-2)] text-[var(--text-body)] hover:bg-[var(--brand-soft)]/50 hover:scale-[1.02]"
                 }`}
               >
-                <t.icon size={16} />
+                <t.icon size={20} />
                 {t.label}
               </button>
             );
@@ -89,10 +102,22 @@ export function ShareModal({
         </div>
 
         {channel === "email" && (
-          <AuthInput label="Work email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.co.uk" icon={<Mail size={16} />} />
+          <AuthInput
+            label="Work email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.co.uk"
+            icon={<Mail size={18} />}
+          />
         )}
         {USER_CHANNELS.includes(channel) && (
-          <AuthSelect label="Choose a registered user" value={userId} onChange={(e) => setUserId(e.target.value)} icon={<Users size={16} />}>
+          <AuthSelect
+            label="Choose a registered user"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            icon={<Users size={18} />}
+          >
             {users.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name}
@@ -111,22 +136,16 @@ export function ShareModal({
           </AuthSelect>
         )}
 
-        <label className="flex flex-col gap-[7px]">
-          <span className="text-[13px] font-semibold text-[var(--text-body)]">Message</span>
+        <label className="flex flex-col gap-2">
+          <span className="text-[var(--text-sm)] font-semibold text-[var(--text-body)]">Message</span>
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            rows={3}
-            placeholder="Write here"
-            className="rounded-[var(--r-field)] border-[1.5px] border-[var(--border-default)] bg-[#fdfdff] px-3.5 py-2.5 text-sm text-[var(--text-strong)] placeholder:text-[#9a93a1] focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
+            rows={4}
+            placeholder="Write your message here…"
+            className="rounded-[var(--r-field)] border border-[var(--border-default)] bg-[#fdfdff] px-3.5 py-3 text-[var(--text-sm)] text-[var(--text-strong)] placeholder:text-[var(--text-soft)] focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25 min-h-[110px]"
           />
         </label>
-
-        <div className="flex justify-end">
-          <Button className="rounded-[var(--r-control)]" onClick={submit} disabled={disabled}>
-            Share <Share2 size={14} />
-          </Button>
-        </div>
       </div>
     </Modal>
   );

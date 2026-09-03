@@ -17,7 +17,11 @@ import {
   type CreateVideoInput,
   type InternalVideo,
 } from "@/lib/internalApiClient";
-import { GripVertical, Loader2, Pencil, Plus, Trash2, GraduationCap, ExternalLink } from "lucide-react";
+import { GripVertical, Loader2, Pencil, Plus, Trash2, GraduationCap, ExternalLink, Film } from "lucide-react";
+import { Pagination } from "@/components/ui/Pagination";
+import { timeAgo } from "@/lib/format";
+
+const PAGE_SIZE = 8;
 
 const GRADIENTS = [
   "from-indigo-500 to-violet-600",
@@ -57,6 +61,12 @@ export default function InternalOnboardingPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<InternalVideo | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+
+  const totalPages = Math.max(1, Math.ceil(videos.length / PAGE_SIZE));
+  const clampedPage = Math.min(page, totalPages);
+  const pageOffset = (clampedPage - 1) * PAGE_SIZE;
+  const pagedVideos = videos.slice(pageOffset, pageOffset + PAGE_SIZE);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -125,7 +135,7 @@ export default function InternalOnboardingPage() {
     <AppShell title="Onboarding CMS" subtitle="One shared video library — every organisation sees this list">
       <div className="flex items-center justify-between mb-4">
         <p className="text-xs text-slate-500">
-          {videos.length} video{videos.length === 1 ? "" : "s"} · drag rows to reorder
+          {videos.length} video{videos.length === 1 ? "" : "s"} · drag rows to reorder across pages
         </p>
         <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}>
           <Plus size={14} /> Add video
@@ -134,61 +144,107 @@ export default function InternalOnboardingPage() {
 
       {error && <p className="mb-3 text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>}
 
-      <Card className="divide-y divide-slate-100">
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-400">
-            <Loader2 size={15} className="animate-spin" /> Loading…
+      <Card>
+        {!loading && videos.length > 0 && (
+          <div className="hidden md:grid md:grid-cols-[auto_auto_minmax(0,1.4fr)_auto_auto_minmax(0,1fr)_auto_auto] gap-3 border-b border-slate-100 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            <span aria-hidden />
+            <span>#</span>
+            <span>Details</span>
+            <span>Category</span>
+            <span>Audience</span>
+            <span>Media</span>
+            <span>Added</span>
+            <span>Actions</span>
           </div>
-        ) : videos.length === 0 ? (
-          <div className="py-10 text-center text-sm text-slate-400">
-            <GraduationCap size={20} className="mx-auto mb-2 opacity-50" />
-            No videos yet. Add the first one.
-          </div>
-        ) : (
-          videos.map((video, index) => (
-            <div
-              key={video.id}
-              draggable
-              onDragStart={() => setDragIndex(index)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => onDrop(index)}
-              className={`flex items-center gap-3 px-4 py-3 ${dragIndex === index ? "opacity-40" : ""}`}
-            >
-              <GripVertical size={16} className="text-slate-300 cursor-grab shrink-0" />
-              <div className={`h-10 w-16 rounded-md bg-gradient-to-br ${video.thumbnail_gradient} shrink-0`} />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-800 truncate">{video.title}</p>
-                <p className="text-xs text-slate-400 truncate">{video.description}</p>
-              </div>
-              {video.media_url && (
-                <a
-                  href={video.media_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-slate-400 hover:text-brand shrink-0"
-                  title="Open media"
-                >
-                  <ExternalLink size={14} />
-                </a>
-              )}
-              {video.category && <Badge tone="indigo">{video.category}</Badge>}
-              <Badge tone="slate">{AUDIENCE_LABELS[video.audience]}</Badge>
-              <button
-                onClick={() => { setEditing(video); setFormOpen(true); }}
-                className="text-slate-400 hover:text-brand p-1.5 rounded-md hover:bg-slate-100 shrink-0"
-                title="Edit"
-              >
-                <Pencil size={14} />
-              </button>
-              <button
-                onClick={() => handleDelete(video)}
-                className="text-slate-400 hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 shrink-0"
-                title="Delete"
-              >
-                <Trash2 size={14} />
-              </button>
+        )}
+
+        <div className="divide-y divide-slate-100">
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-400">
+              <Loader2 size={15} className="animate-spin" /> Loading…
             </div>
-          ))
+          ) : videos.length === 0 ? (
+            <div className="py-10 text-center text-sm text-slate-400">
+              <GraduationCap size={20} className="mx-auto mb-2 opacity-50" />
+              No videos yet. Add the first one.
+            </div>
+          ) : (
+            pagedVideos.map((video, index) => {
+              const globalIndex = pageOffset + index;
+              const mediaLabel = video.media_url ? "Link attached" : "No media yet";
+              return (
+                <div
+                  key={video.id}
+                  draggable
+                  onDragStart={() => setDragIndex(globalIndex)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => onDrop(globalIndex)}
+                  className={`grid gap-3 px-4 py-3 md:grid-cols-[auto_auto_minmax(0,1.4fr)_auto_auto_minmax(0,1fr)_auto_auto] md:items-center ${dragIndex === globalIndex ? "opacity-40" : ""}`}
+                >
+                  <GripVertical size={16} className="hidden text-slate-300 cursor-grab shrink-0 md:block" />
+                  <div className="flex items-center gap-2 md:block">
+                    <span className="text-xs font-medium text-slate-400">{globalIndex + 1}</span>
+                    <div className={`h-10 w-16 rounded-md bg-gradient-to-br ${video.thumbnail_gradient} shrink-0 md:hidden`} />
+                  </div>
+                  <div className="flex min-w-0 items-start gap-3 md:items-center">
+                    <div className={`hidden h-10 w-16 rounded-md bg-gradient-to-br ${video.thumbnail_gradient} shrink-0 md:block`} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-slate-800 truncate">{video.title}</p>
+                      <p className="text-xs text-slate-400 line-clamp-2 md:truncate">{video.description}</p>
+                    </div>
+                  </div>
+                  <div>
+                    {video.category ? <Badge tone="indigo">{video.category}</Badge> : <span className="text-xs text-slate-400">—</span>}
+                  </div>
+                  <Badge tone="slate">{AUDIENCE_LABELS[video.audience]}</Badge>
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <Film size={12} className="shrink-0" />
+                    <span className="truncate">{mediaLabel}</span>
+                    {video.media_url && (
+                      <a
+                        href={video.media_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-slate-400 hover:text-brand shrink-0"
+                        title="Open media"
+                      >
+                        <ExternalLink size={14} />
+                      </a>
+                    )}
+                  </div>
+                  <p className="hidden text-xs text-slate-400 md:block">{timeAgo(video.created_at)}</p>
+                  <div className="flex items-center gap-1 md:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => { setEditing(video); setFormOpen(true); }}
+                      className="cursor-pointer text-slate-400 hover:text-brand p-1.5 rounded-md hover:bg-slate-100 shrink-0"
+                      title="Edit"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(video)}
+                      className="cursor-pointer text-slate-400 hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 shrink-0"
+                      title="Delete"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {!loading && videos.length > 0 && (
+          <Pagination
+            page={clampedPage}
+            totalPages={totalPages}
+            totalItems={videos.length}
+            pageSize={PAGE_SIZE}
+            onChange={setPage}
+          />
         )}
       </Card>
 

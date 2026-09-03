@@ -9,10 +9,10 @@ import { ChevronDown } from "lucide-react";
  */
 
 const shell =
-  "flex h-12 items-center gap-2.5 rounded-[var(--r-field)] border-[1.5px] border-[var(--border-default)] bg-[#fdfdff] px-3.5 transition-colors focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/25";
+  "flex h-12 items-center gap-2.5 rounded-[13px] border border-[#e4dfe8] bg-white px-3.5 transition-colors focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20";
 
 export function FieldLabel({ children }: { children: ReactNode }) {
-  return <span className="text-[13px] font-semibold text-[var(--text-body)]">{children}</span>;
+  return <span className="text-[14px] font-bold text-[var(--text-strong)]">{children}</span>;
 }
 
 interface AuthInputProps extends InputHTMLAttributes<HTMLInputElement> {

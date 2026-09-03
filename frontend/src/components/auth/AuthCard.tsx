@@ -11,7 +11,7 @@ export function AuthCard({
 }) {
   return (
     <div
-      className={`w-full max-w-[480px] rounded-[20px] bg-white p-6 shadow-[0_0_4px_rgba(122,113,160,0.2)] ${className}`}
+      className={`w-full rounded-[28px] bg-white px-8 py-8 shadow-[0_8px_32px_rgba(31,20,38,0.08),0_2px_8px_rgba(31,20,38,0.04)] ${className}`}
     >
       {children}
     </div>
@@ -29,11 +29,11 @@ export function AuthCardHeader({
   align?: "left" | "center";
 }) {
   return (
-    <div className={`flex flex-col gap-1.5 ${align === "center" ? "text-center items-center" : ""}`}>
-      <h1 className="text-[30px] font-extrabold leading-[1.15] tracking-[-0.03em] text-[var(--text-strong)]">
+    <div className={`flex flex-col gap-1 ${align === "center" ? "items-center text-center" : ""}`}>
+      <h1 className="text-[28px] font-extrabold leading-[1.2] tracking-[-0.03em] text-[var(--text-strong)]">
         {title}
       </h1>
-      {subtitle && <p className="text-[15px] text-[var(--text-soft)]">{subtitle}</p>}
+      {subtitle && <p className="text-[15px] leading-relaxed text-[var(--text-soft)]">{subtitle}</p>}
     </div>
   );
 }

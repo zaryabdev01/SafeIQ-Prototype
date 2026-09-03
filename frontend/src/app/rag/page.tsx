@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, FormRow, Textarea, Label, Select } from "@/components/ui/Field";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
+import { Pagination } from "@/components/ui/Pagination";
 import { useApp } from "@/lib/store";
 import { INTERNAL_ORG_ID } from "@/lib/mockData";
 import { timeAgo } from "@/lib/format";
@@ -56,6 +57,8 @@ const WIZARD_STEPS = [
   { label: "Review & create" },
 ];
 
+const RAG_PAGE_SIZE = 9;
+
 export default function RagListPage() {
   const router = useRouter();
   const {
@@ -77,6 +80,7 @@ export default function RagListPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [step, setStep] = useState(0);
   const [createdRagId, setCreatedRagId] = useState<string | null>(null);
+  const [ragPage, setRagPage] = useState(1);
 
   // Step 0 - RAG details
   const [name, setName] = useState("");
@@ -108,6 +112,10 @@ export default function RagListPage() {
   const rags = allRags.filter((r) =>
     isInternal ? r.orgId === INTERNAL_ORG_ID : r.orgId === currentUser?.orgId || r.sharedWithOrgIds?.includes(currentUser?.orgId ?? "")
   );
+
+  const totalRagPages = Math.max(1, Math.ceil(rags.length / RAG_PAGE_SIZE));
+  const clampedRagPage = Math.min(ragPage, totalRagPages);
+  const pagedRags = rags.slice((clampedRagPage - 1) * RAG_PAGE_SIZE, clampedRagPage * RAG_PAGE_SIZE);
 
   const effectiveCategory = category === "Other" ? customCategory.trim() : category;
   const createdRag = createdRagId ? allRags.find((r) => r.id === createdRagId) ?? null : null;
@@ -212,13 +220,13 @@ export default function RagListPage() {
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {rags.map((r) => {
+        {pagedRags.map((r, index) => {
           const assigned = ragAssignments.filter((a) => a.ragId === r.id).length;
           const pending = ragQuestions.filter((q) => q.ragId === r.id && q.status !== "answered").length;
           const reviewDue = isReviewDue(r);
           return (
-            <Link key={r.id} href={`/rag/${r.id}`}>
-              <Card className="h-full hover:border-brand transition-colors">
+            <Link key={r.id} href={`/rag/${r.id}`} className="animate-page-enter" style={{ animationDelay: `${index * 40}ms` }}>
+              <Card className="h-full hover:border-brand hover:-translate-y-0.5">
                 <CardBody>
                   <div className="flex items-start justify-between mb-3">
                     <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${r.colorTag}1a`, color: r.colorTag }}>
@@ -263,6 +271,17 @@ export default function RagListPage() {
         })}
         {rags.length === 0 && <p className="text-sm text-slate-400 col-span-full text-center py-12">No RAG systems yet - create your first one.</p>}
       </div>
+
+      {rags.length > 0 && (
+        <Pagination
+          page={clampedRagPage}
+          totalPages={totalRagPages}
+          totalItems={rags.length}
+          pageSize={RAG_PAGE_SIZE}
+          onChange={setRagPage}
+          className="mt-6 !border-t-0 !px-0"
+        />
+      )}
 
       <Modal open={wizardOpen} onClose={saveDraftAndExit} title="Create a new RAG system" widthClass="max-w-3xl">
         <div className="flex gap-6">
