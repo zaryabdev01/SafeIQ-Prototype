@@ -4,18 +4,21 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AuthShell } from "@/components/AuthShell";
 import { AuthCard, AuthCardHeader } from "@/components/auth/AuthCard";
-import { AuthInput } from "@/components/auth/AuthField";
+import { AuthInput, AuthSelect } from "@/components/auth/AuthField";
 import { OtpInput } from "@/components/auth/OtpInput";
 import { Button } from "@/components/ui/Button";
+import { apiClient, ApiError, type OrganisationLookup } from "@/lib/apiClient";
 import { Loader2, Mail, Lock, Eye, EyeOff, ArrowRight, ArrowLeft, CheckCircle2 } from "lucide-react";
 
-type Stage = "email" | "otp" | "password" | "done";
+type Stage = "email" | "org" | "otp" | "password" | "done";
 
 const RESEND_SECONDS = 48;
 
 export default function ForgotPasswordPage() {
   const [stage, setStage] = useState<Stage>("email");
   const [email, setEmail] = useState("");
+  const [orgChoices, setOrgChoices] = useState<OrganisationLookup[]>([]);
+  const [orgId, setOrgId] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -30,17 +33,48 @@ export default function ForgotPasswordPage() {
     return () => clearInterval(id);
   }, [stage, resendIn]);
 
-  // Password reset has no backend endpoint yet — every step here is simulated
-  // client-side so the redesigned flow can be reviewed (see PROJECT_OVERVIEW.md
-  // "real vs. mock").
-  function simulate(next: Stage) {
+  async function sendCode(organisationId?: string) {
     setBusy(true);
     setError("");
-    setTimeout(() => {
+    try {
+      const res = await apiClient.forgotPassword({ email: email.trim(), organisation_id: organisationId });
+      if (res.organisation_id) setOrgId(res.organisation_id);
+      setResendIn(RESEND_SECONDS);
+      setStage("otp");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        // Email is in more than one organisation - let them choose.
+        try {
+          const choices = await apiClient.lookupOrganisations(email.trim());
+          setOrgChoices(choices);
+          setOrgId(choices[0]?.organisation_id ?? "");
+          setStage("org");
+        } catch {
+          setError("Could not look up your organisations. Try again.");
+        }
+      } else {
+        setError(err instanceof ApiError ? err.message : "Could not send a reset code. Try again.");
+      }
+    } finally {
       setBusy(false);
-      if (next === "otp") setResendIn(RESEND_SECONDS);
-      setStage(next);
-    }, 600);
+    }
+  }
+
+  async function submitNewPassword() {
+    if (password !== confirm) {
+      setError("Passwords don't match.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await apiClient.resetPassword({ email: email.trim(), organisation_id: orgId, code, new_password: password });
+      setStage("done");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not reset your password. Check the code and try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   const footer = (
@@ -73,7 +107,7 @@ export default function ForgotPasswordPage() {
                 className="mt-1 w-full rounded-[var(--r-control)]"
                 size="lg"
                 disabled={!email.includes("@") || busy}
-                onClick={() => simulate("otp")}
+                onClick={() => sendCode()}
               >
                 {busy ? <Loader2 size={14} className="animate-spin" /> : (
                   <>
@@ -85,40 +119,63 @@ export default function ForgotPasswordPage() {
           </>
         )}
 
+        {stage === "org" && (
+          <>
+            <AuthCardHeader title="Which organisation?" subtitle="This email belongs to more than one organisation." />
+            <div className="flex flex-col gap-3">
+              <AuthSelect label="Organisation" value={orgId} onChange={(e) => setOrgId(e.target.value)}>
+                {orgChoices.map((o) => (
+                  <option key={o.organisation_id} value={o.organisation_id}>
+                    {o.organisation_name}
+                  </option>
+                ))}
+              </AuthSelect>
+              {error && <p className="text-xs text-red-600">{error}</p>}
+              <Button
+                className="mt-1 w-full rounded-[var(--r-control)]"
+                size="lg"
+                disabled={!orgId || busy}
+                onClick={() => sendCode(orgId)}
+              >
+                {busy ? <Loader2 size={14} className="animate-spin" /> : (
+                  <>
+                    Send code <ArrowRight size={16} />
+                  </>
+                )}
+              </Button>
+            </div>
+          </>
+        )}
+
         {stage === "otp" && (
           <>
-            <AuthCardHeader title="Enter OTP" subtitle={`Enter the code we sent to ${email || "your email"}.`} />
+            <AuthCardHeader title="Enter code" subtitle={`Enter the 6-digit code we sent to ${email || "your email"}.`} />
             <div className="flex flex-col items-center gap-4">
-              <OtpInput value={code} onChange={setCode} length={4} autoFocus ariaLabel="Reset code" />
+              <OtpInput value={code} onChange={setCode} length={6} autoFocus ariaLabel="Reset code" />
               <p className="text-sm text-slate-500">
                 {resendIn > 0 ? (
                   `Resend in ${resendIn} secs`
                 ) : (
-                  <button type="button" className="font-bold text-[var(--brand-dark)] hover:underline" onClick={() => setResendIn(RESEND_SECONDS)}>
-                    Resend Code
+                  <button type="button" className="font-bold text-[var(--brand-dark)] hover:underline" onClick={() => void sendCode(orgId)}>
+                    Resend code
                   </button>
                 )}
               </p>
             </div>
             <div className="flex flex-col gap-3">
+              {error && <p className="text-xs text-red-600">{error}</p>}
               <Button
                 className="w-full rounded-[var(--r-control)]"
                 size="lg"
-                disabled={code.length !== 4 || busy}
-                onClick={() => simulate("password")}
+                disabled={code.length !== 6 || busy}
+                onClick={() => {
+                  setError("");
+                  setStage("password");
+                }}
               >
-                {busy ? <Loader2 size={14} className="animate-spin" /> : (
-                  <>
-                    Continue <ArrowRight size={16} />
-                  </>
-                )}
+                Continue <ArrowRight size={16} />
               </Button>
-              <Button
-                variant="outlineBrand"
-                className="w-full rounded-[var(--r-control)]"
-                size="lg"
-                onClick={() => setStage("email")}
-              >
+              <Button variant="outlineBrand" className="w-full rounded-[var(--r-control)]" size="lg" onClick={() => setStage("email")}>
                 <ArrowLeft size={16} /> Back
               </Button>
             </div>
@@ -156,19 +213,16 @@ export default function ForgotPasswordPage() {
                 className="mt-1 w-full rounded-[var(--r-control)]"
                 size="lg"
                 disabled={busy || password.length < 10}
-                onClick={() => {
-                  if (password !== confirm) {
-                    setError("Passwords don't match.");
-                    return;
-                  }
-                  simulate("done");
-                }}
+                onClick={submitNewPassword}
               >
                 {busy ? <Loader2 size={14} className="animate-spin" /> : (
                   <>
-                    Continue <ArrowRight size={16} />
+                    Reset password <ArrowRight size={16} />
                   </>
                 )}
+              </Button>
+              <Button variant="outlineBrand" className="w-full rounded-[var(--r-control)]" size="lg" onClick={() => setStage("otp")}>
+                <ArrowLeft size={16} /> Back
               </Button>
             </div>
           </>

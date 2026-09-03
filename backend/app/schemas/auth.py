@@ -61,6 +61,26 @@ class LoginRequest(BaseModel):
     organisation_id: uuid.UUID
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+    organisation_id: uuid.UUID | None = None
+
+
+class ForgotPasswordResponse(BaseModel):
+    # Always true when the request was well-formed - never reveals whether the
+    # email actually has an account. `organisation_id` echoes the resolved org
+    # so the client knows which one to send on to /auth/reset-password.
+    sent: bool = True
+    organisation_id: uuid.UUID | None = None
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    organisation_id: uuid.UUID
+    code: str = Field(min_length=6, max_length=6)
+    new_password: str = Field(min_length=10)
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str

@@ -250,6 +250,12 @@ export const apiClient = {
 
   login: (payload: { email: string; password: string; organisation_id: string }) => request<TokenResponse>("/auth/login", { method: "POST", body: payload }),
 
+  forgotPassword: (payload: { email: string; organisation_id?: string }) =>
+    request<{ sent: boolean; organisation_id: string | null }>("/auth/forgot-password", { method: "POST", body: payload }),
+
+  resetPassword: (payload: { email: string; organisation_id: string; code: string; new_password: string }) =>
+    request<void>("/auth/reset-password", { method: "POST", body: payload }),
+
   me: () => request<ApiUserProfile>("/me", { auth: true }),
 
   updateSettings: (payload: { country?: string; language?: string; job_title?: string }) =>

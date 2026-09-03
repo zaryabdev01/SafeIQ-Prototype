@@ -24,7 +24,13 @@ export function AppShell({
   const router = useRouter();
 
   useEffect(() => {
-    if (hydrated && !currentUser) router.replace("/login");
+    if (hydrated && !currentUser) {
+      // Preserve where they were headed (e.g. a shared /onboarding?video=… link)
+      // so login can send them back there instead of the default landing page.
+      const here = typeof window !== "undefined" ? window.location.pathname + window.location.search : "";
+      const next = here && here !== "/login" ? `?next=${encodeURIComponent(here)}` : "";
+      router.replace(`/login${next}`);
+    }
   }, [hydrated, currentUser, router]);
 
   if (!hydrated || !currentUser) return null;

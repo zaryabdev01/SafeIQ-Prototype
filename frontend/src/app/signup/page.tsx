@@ -89,6 +89,12 @@ export default function SignupPage() {
   }
 
   async function handleContinueFromDetails() {
+    // The org is created once, on the first pass through this step. If the user
+    // steps back and forward again, just advance - don't create a duplicate.
+    if (onboardingToken) {
+      setStep(2);
+      return;
+    }
     setBusy(true);
     setApiErrorMsg("");
     try {
@@ -274,6 +280,11 @@ export default function SignupPage() {
           {/* Step 1 — Your details (organisation) */}
           {step === 1 && (
             <div className="flex flex-col gap-3">
+              {onboardingToken && (
+                <p className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
+                  Your organisation has already been created. Editing these fields won&apos;t change it — continue to verify your email.
+                </p>
+              )}
               <AuthInput label="Organisation name" value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Bright Care Homes Ltd" icon={<Building2 size={16} />} />
               <AuthSelect label="Sector" value={sector} onChange={(e) => setSector(e.target.value)} icon={<Layers size={16} />}>
                 {SECTORS.map((s) => (

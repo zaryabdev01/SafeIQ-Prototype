@@ -23,6 +23,13 @@ function destinationFor(u: AppUser | null | undefined) {
   return isOrgLevel(u) ? "/dashboard" : "/employee";
 }
 
+/** A `?next=` target from an AppShell auth redirect - only same-origin app paths. */
+function nextTarget(): string | null {
+  if (typeof window === "undefined") return null;
+  const raw = new URLSearchParams(window.location.search).get("next");
+  return raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : null;
+}
+
 const ROLE_TABS = [
   { value: "organisation" as Role, label: "Organisation", icon: Building2 },
   { value: "employee" as Role, label: "Employee", icon: UserRound },
@@ -50,7 +57,7 @@ export default function LoginPage() {
     const profile = await apiClient.me();
     const appUser = mapApiUserToAppUser(profile, organisationId);
     hydrateRealAccount(appUser, { id: organisationId, name: organisationName, sector: "", kycVerified: true });
-    router.push(destinationFor(appUser));
+    router.push(nextTarget() ?? destinationFor(appUser));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -68,7 +75,7 @@ export default function LoginPage() {
         setInternalSession(tokens.access_token, tokens.refresh_token);
         const me = await internalApiClient.me();
         hydrateRealAccount(internalUserToAppUser(me));
-        router.push("/internal");
+        router.push(nextTarget() ?? "/internal");
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "Could not sign in to SafeIQ Internal.");
       } finally {
@@ -106,7 +113,7 @@ export default function LoginPage() {
   function quickLogin(userId: string) {
     loginAsDemoUser(userId);
     const u = users.find((x) => x.id === userId);
-    router.push(destinationFor(u));
+    router.push(nextTarget() ?? destinationFor(u));
   }
 
   return (

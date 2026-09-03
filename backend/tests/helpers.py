@@ -8,7 +8,8 @@ from httpx import AsyncClient
 from app.main import app
 from app.services.email import EmailSender, get_email_sender
 
-_OTP_RE = re.compile(r"verification code is (\d{6})")
+# Matches "verification code is 123456" and "password reset code is 123456".
+_CODE_RE = re.compile(r"code is (\d{6})")
 
 
 class RecordingEmailSender(EmailSender):
@@ -20,10 +21,10 @@ class RecordingEmailSender(EmailSender):
 
     def last_otp(self) -> str:
         for message in reversed(self.sent):
-            match = _OTP_RE.search(message["body"])
+            match = _CODE_RE.search(message["body"] or "")
             if match:
                 return match.group(1)
-        raise AssertionError("No OTP email was sent")
+        raise AssertionError("No code email was sent")
 
 
 def override_email_sender() -> RecordingEmailSender:

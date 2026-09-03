@@ -104,7 +104,13 @@ async def test_category_round_trips_and_filters(client: AsyncClient, postgres_av
     assert reports["id"] not in ids
 
 
-async def test_search_matches_and_logs_event(client: AsyncClient, postgres_available: bool) -> None:
+async def test_search_matches_and_logs_event(client: AsyncClient, postgres_available: bool, monkeypatch) -> None:
+    # Pin the deterministic offline provider - a local .env may select `embedding`.
+    from app.api.routes import onboarding as onboarding_routes
+    from app.services.onboarding_search import KeywordSearchProvider
+
+    monkeypatch.setattr(onboarding_routes, "get_onboarding_search_provider", lambda: KeywordSearchProvider())
+
     internal = await seed_internal_user_and_login(client)
     token = uuid.uuid4().hex[:8]
     hit = await _create_video(client, internal["access_token"], title=f"Guidance {token}", description=f"about {token}")

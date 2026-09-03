@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -15,11 +15,14 @@ from app.db.session import get_control_session_dep, tenant_session
 from app.models.tenant import KycRecord, LoginEvent, OtpCode, TeamRole, User
 from app.schemas.auth import (
     EmployeeDirectSignupRequest,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     KycStartResponse,
     KycStatusResponse,
     LoginRequest,
     OrganisationLookupResponse,
     OrganisationSignupRequest,
+    ResetPasswordRequest,
     SignupResponse,
     TokenResponse,
     VerifyOtpRequest,
@@ -73,6 +76,23 @@ async def signup_organisation(
     control_db: AsyncSession = Depends(get_control_session_dep),
     email_sender: EmailSender = Depends(get_email_sender),
 ) -> SignupResponse:
+    # Guard against an accidental double-create (e.g. the signup wizard being
+    # stepped back and forward): if this email already owns an organisation with
+    # the same name, don't spin up a second isolated schema for it.
+    existing = await control_db.execute(
+        select(Organisation.id)
+        .join(UserDirectoryEntry, UserDirectoryEntry.org_id == Organisation.id)
+        .where(
+            UserDirectoryEntry.email == payload.email.lower(),
+            func.lower(Organisation.name) == payload.organisation_name.strip().lower(),
+        )
+    )
+    if existing.first() is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"You already have an organisation named '{payload.organisation_name.strip()}'.",
+        )
+
     org = await create_organisation(control_db, name=payload.organisation_name, sector=payload.sector)
 
     tenant_db = tenant_session(org.tenant_schema)
@@ -178,6 +198,112 @@ async def lookup_organisations_for_email(
         .where(UserDirectoryEntry.email == email.lower())
     )
     return [OrganisationLookupResponse(organisation_id=row.org_id, organisation_name=row.name) for row in result.all()]
+
+
+async def _orgs_for_email(control_db: AsyncSession, email: str) -> list[Organisation]:
+    result = await control_db.execute(
+        select(Organisation)
+        .join(UserDirectoryEntry, UserDirectoryEntry.org_id == Organisation.id)
+        .where(UserDirectoryEntry.email == email.lower())
+    )
+    return list(result.scalars().all())
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+async def forgot_password(
+    payload: ForgotPasswordRequest,
+    control_db: AsyncSession = Depends(get_control_session_dep),
+    email_sender: EmailSender = Depends(get_email_sender),
+) -> ForgotPasswordResponse:
+    """Sends a 6-digit reset code. Never reveals whether the email exists.
+    If the email belongs to more than one organisation and none was given,
+    responds 409 so the client can show an organisation picker."""
+    email = payload.email.lower()
+    if payload.organisation_id is not None:
+        org = await control_db.get(Organisation, payload.organisation_id)
+    else:
+        orgs = await _orgs_for_email(control_db, email)
+        if len(orgs) > 1:
+            raise HTTPException(status.HTTP_409_CONFLICT, "This email is in more than one organisation - choose one.")
+        org = orgs[0] if orgs else None
+
+    if org is not None:
+        tenant_db = tenant_session(org.tenant_schema)
+        try:
+            user = (await tenant_db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+            if user is not None:
+                code = generate_otp()
+                tenant_db.add(
+                    OtpCode(user_id=user.id, code_hash=hash_otp(code), purpose="password_reset", expires_at=otp_expiry())
+                )
+                await audit_service.record_event(
+                    tenant_db, event_type="user.password_reset_requested", subject_id=user.id, owner_id=user.id
+                )
+                await tenant_db.commit()
+                minutes = get_settings().otp_expire_minutes
+                await email_sender.send(
+                    to=user.email,
+                    subject="Reset your SafeIQ password",
+                    body=f"Your password reset code is {code}. It expires in {minutes} minutes. "
+                    "If you didn't ask to reset your password, ignore this email.",
+                    html=render_email(
+                        heading="Reset your password",
+                        intro="Enter this code in SafeIQ to set a new password:",
+                        highlight=code,
+                        outro=f"The code expires in {minutes} minutes. If you didn't request this, you can ignore this email.",
+                    ),
+                )
+        finally:
+            await tenant_db.close()
+
+    return ForgotPasswordResponse(sent=True, organisation_id=org.id if org else payload.organisation_id)
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_password(
+    payload: ResetPasswordRequest,
+    control_db: AsyncSession = Depends(get_control_session_dep),
+) -> None:
+    org = await control_db.get(Organisation, payload.organisation_id)
+    if org is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid reset request")
+
+    tenant_db = tenant_session(org.tenant_schema)
+    try:
+        user = (await tenant_db.execute(select(User).where(User.email == payload.email.lower()))).scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired reset code")
+
+        otp = (
+            await tenant_db.execute(
+                select(OtpCode)
+                .where(
+                    OtpCode.user_id == user.id,
+                    OtpCode.purpose == "password_reset",
+                    OtpCode.consumed_at.is_(None),
+                )
+                .order_by(OtpCode.created_at.desc())
+            )
+        ).scalars().first()
+        now = datetime.now(UTC)
+        if otp is None or otp.expires_at < now or otp.attempts >= 5:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired reset code - request a new one")
+        if hash_otp(payload.code) != otp.code_hash:
+            otp.attempts += 1
+            await tenant_db.commit()
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Incorrect code")
+
+        otp.consumed_at = now
+        user.password_hash = hash_password(payload.new_password)
+        await audit_service.record_event(
+            tenant_db, event_type="user.password_reset", subject_id=user.id, owner_id=user.id
+        )
+        await tenant_db.commit()
+    except HTTPException:
+        await tenant_db.rollback()
+        raise
+    finally:
+        await tenant_db.close()
 
 
 @router.post("/verify-otp", response_model=VerifyOtpResponse)

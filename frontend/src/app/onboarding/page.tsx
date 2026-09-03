@@ -211,16 +211,23 @@ export default function OnboardingPage() {
       .catch(() => {});
   }, [isRealSession]);
 
-  // Deep link from a share email: /onboarding?video=<id> auto-opens that video.
+  // Deep link from a share email: /onboarding?video=<id>. Capture the id once,
+  // strip it from the URL immediately (so a reload / later visit is clean), then
+  // open that video as soon as the real-session list has loaded - just once.
+  const wantVideoRef = useRef<string | null>(
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("video"),
+  );
   const autoOpenedRef = useRef(false);
   useEffect(() => {
-    if (!isRealSession || autoOpenedRef.current || typeof window === "undefined") return;
-    const wantId = new URLSearchParams(window.location.search).get("video");
-    if (!wantId) return;
-    const match = realVideos.find((v) => v.id === wantId);
+    if (wantVideoRef.current && typeof window !== "undefined" && window.location.search) {
+      window.history.replaceState(null, "", "/onboarding");
+    }
+  }, []);
+  useEffect(() => {
+    if (!isRealSession || autoOpenedRef.current || !wantVideoRef.current) return;
+    const match = realVideos.find((v) => v.id === wantVideoRef.current);
     if (!match) return;
     autoOpenedRef.current = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: open the shared video once its list has loaded
     setOpenVideo(mapApiVideo(match));
     apiClient.recordOnboardingVideoView(match.id).catch(() => {});
   }, [isRealSession, realVideos]);
