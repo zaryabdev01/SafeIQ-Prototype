@@ -22,15 +22,18 @@ infra work. **Do not run `git subtree push`.**
 
 ## How to ship a backend change
 
-Work in a real `safeiq-be` checkout:
+**Branch + PR only — never push `main`** (company policy; see `AGENTS.md`). Work in a
+real `safeiq-be` checkout:
 
 ```bash
 git clone https://github.com/GTG-Enterprises/safeiq-be.git
 cd safeiq-be
+git checkout -b feat/<short-desc>
 # make the change, then:
-ruff check app tests scripts && mypy app scripts && pytest   # 53/53 must pass
+ruff check app tests scripts && mypy app scripts && pytest   # all must pass
 git add -A && git commit -m "..."
-git push origin main
+git push -u origin feat/<short-desc>
+gh pr create --fill          # a teammate reviews + merges; the merge deploys
 ```
 
 If a change was prototyped in this monorepo's `backend/` first, move it over as a patch:

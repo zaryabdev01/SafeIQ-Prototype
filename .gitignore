@@ -52,3 +52,8 @@ yarn-error.log*
 .env.*
 !.env.example
 !.env.*.example
+
+# Claude Code — commit shared config + hooks, ignore per-user + session state
+.claude/settings.local.json
+.claude/specs/
+.claude/*.lock

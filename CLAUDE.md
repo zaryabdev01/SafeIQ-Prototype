@@ -1,1 +1,3 @@
 @AGENTS.md
+
+@.claude/PROJECT_OVERVIEW.md
