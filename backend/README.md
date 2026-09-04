@@ -95,8 +95,11 @@ open to any org role. Analytics (task 27) stay per-tenant.
 
 Tasks 28-30 (invite by email/magic link, accept-invite flow, invite log with resend/cancel) were
 already built as part of Milestone 2's `app/api/routes/invites.py` - they turned out to be needed
-early, to have any way to create a second user for testing signup/login. Only task 31 is new here;
-tasks 32-34 are explicitly **not implemented** - see below.
+early, to have any way to create a second user for testing signup/login. Task 31 followed. The
+client-feedback addendum's tasks 96/105/106 are now real too (Phase 1 of
+`.claude/specs/m4-team-management.md` - the standing "client feedback = UI/mock-store only" rule is
+deliberately overridden for these, see that spec's Decisions section). Tasks 32-34 remain **not
+implemented** - see below.
 
 | Task | Implementation |
 |---|---|
@@ -105,11 +108,16 @@ tasks 32-34 are explicitly **not implemented** - see below.
 | 32. RAG assignments with access codes | **Not implemented - hard-blocked.** There's no RAG entity in this backend yet (that's Milestone 5, AI Knowledge Base). Building an "assignment" against a RAG concept that doesn't exist server-side would just need rework once Milestone 5 lands, so it wasn't attempted |
 | 33. Per-member activity view inside each RAG | Same blocker as task 32 - also depends on the chat/question-asking flow (Milestone 6) |
 | 34. Assignment management | Same blocker as task 32 |
+| 96. Safeguarding Lead + content-level visibility | `User.is_safeguarding_lead`; `PATCH /team/{id}/safeguarding-lead` (admin-only, `_ROLE_ADMINS`). `app/api/deps.py::can_view_conversation_content` is the pure gating function (mirrors the frontend's `permissions.ts`) - not wired into a route yet, since there's no real conversation content until Milestone 6; Phase 4 of the M4 spec wires it |
+| 105. Search + bulk on team/invite lists | `GET /team?q=&include_archived=&limit=&offset=`, `GET /invites?q=&status=&limit=&offset=`, `POST /team/bulk-status`, `POST /invites/bulk-resend`, `POST /invites/bulk-cancel` - all in `app/api/routes/{users,invites}.py` |
+| 106. Archive status for team members | `User.status` (`active`\|`archived`); `PATCH /team/{id}/status`. Deliberately **not** a login block - an archived user's existing tokens keep working; see the route docstring |
 
 The frontend's team member profile page (`frontend/src/app/team/[id]/TeamMemberClient.tsx`) reflects
 this honestly: notes and alert rules are fully real when signed in for real, while the "flagged
 alert words" and "assigned RAG systems" sections show an explicit notice that they're waiting on
-Milestone 5, rather than silently rendering empty mock data that could be mistaken for a bug.
+Milestone 5, rather than silently rendering empty mock data that could be mistaken for a bug. Tasks
+96/105/106 above are backend-only as of this revision - the frontend real-mode wiring for them is a
+separate, still-pending phase (Phase 5 of the M4 spec).
 
 ## Client feedback (17/08/2026) - Phase 1a: real login history
 
@@ -124,6 +132,13 @@ of sync. `GET /team/login-history?q=&user_id=&limit=` (`app/api/routes/users.py`
 `GET /team/{user_id}` deliberately, since FastAPI matches path templates in registration order and
 the literal `/team/login-history` segment would otherwise be swallowed by that parameterised route.
 Covered by `tests/test_login_history.py`.
+
+## One-off maintenance scripts
+
+| Script | Purpose |
+|---|---|
+| `scripts/migrate_tenant_onboarding.py` | Milestone 3 phase 2 - drops the now-unused per-tenant `onboarding_videos` table/FK after the catalogue moved to `control.onboarding_videos` |
+| `scripts/backfill_m4.py` | Milestone 4 - backfills `users.status` / `users.is_safeguarding_lead` (and, going forward, any new M4 table) onto tenant schemas provisioned before that model change landed. Idempotent; run after every M4 phase that adds a tenant-schema model change |
 
 ## How multi-tenancy actually works here
 

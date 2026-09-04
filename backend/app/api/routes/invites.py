@@ -3,8 +3,8 @@ from __future__ import annotations
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, get_tenant_db, require_role
@@ -14,7 +14,15 @@ from app.db.control_models import InviteIndexEntry, Organisation, UserDirectoryE
 from app.db.session import get_control_session_dep, tenant_session
 from app.models.tenant import Invite, TeamRole, User
 from app.schemas.auth import TokenResponse
-from app.schemas.invite import AcceptInviteRequest, CreateInviteRequest, InvitePreview, InviteResponse
+from app.schemas.invite import (
+    AcceptInviteRequest,
+    BulkInviteCancelResponse,
+    BulkInviteResendResponse,
+    BulkInviteTokensRequest,
+    CreateInviteRequest,
+    InvitePreview,
+    InviteResponse,
+)
 from app.services import audit as audit_service
 from app.services.email import EmailSender, get_email_sender
 from app.services.email_templates import render_email
@@ -103,9 +111,81 @@ async def create_invite(
 async def list_invites(
     current_user: CurrentUser = Depends(require_role(*_INVITE_ADMINS)),
     db: AsyncSession = Depends(get_tenant_db),
+    q: str | None = None,
+    invite_status: str | None = Query(default=None, alias="status"),
+    limit: int = 100,
+    offset: int = 0,
 ) -> list[InviteResponse]:
-    result = await db.execute(select(Invite).order_by(Invite.created_at.desc()))
+    stmt = select(Invite).order_by(Invite.created_at.desc())
+    if invite_status:
+        stmt = stmt.where(Invite.status == invite_status)
+    if q and q.strip():
+        like = f"%{q.strip().lower()}%"
+        stmt = stmt.where(func.lower(Invite.email).like(like))
+    stmt = stmt.offset(offset).limit(limit)
+
+    result = await db.execute(stmt)
     return [_to_response(invite) for invite in result.scalars().all()]
+
+
+@router.post("/bulk-resend", response_model=BulkInviteResendResponse)
+async def bulk_resend_invites(
+    payload: BulkInviteTokensRequest,
+    current_user: CurrentUser = Depends(require_role(*_INVITE_ADMINS)),
+    db: AsyncSession = Depends(get_tenant_db),
+    control_db: AsyncSession = Depends(get_control_session_dep),
+    email_sender: EmailSender = Depends(get_email_sender),
+) -> BulkInviteResendResponse:
+    org = await control_db.get(Organisation, current_user.org_id)
+    org_name = org.name if org else "your organisation"
+
+    resent: list[str] = []
+    skipped: list[str] = []
+    for token in payload.tokens:
+        result = await db.execute(select(Invite).where(Invite.token == token))
+        invite = result.scalar_one_or_none()
+        if invite is None or invite.status != "pending":
+            skipped.append(token)
+            continue
+        if invite.email:
+            await _send_invite_email(
+                email_sender,
+                to=invite.email,
+                link=f"{get_settings().magic_link_base_url}/{invite.token}",
+                org_name=org_name,
+                reminder=True,
+            )
+        resent.append(token)
+
+    await audit_service.record_event(
+        db, event_type="invite.bulk_resent", subject_id=current_user.id, owner_id=current_user.id, content={"count": len(resent)}
+    )
+    return BulkInviteResendResponse(resent=resent, skipped=skipped)
+
+
+@router.post("/bulk-cancel", response_model=BulkInviteCancelResponse)
+async def bulk_cancel_invites(
+    payload: BulkInviteTokensRequest,
+    current_user: CurrentUser = Depends(require_role(*_INVITE_ADMINS)),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> BulkInviteCancelResponse:
+    cancelled: list[str] = []
+    skipped: list[str] = []
+    for token in payload.tokens:
+        result = await db.execute(select(Invite).where(Invite.token == token))
+        invite = result.scalar_one_or_none()
+        if invite is None or invite.status != "pending":
+            skipped.append(token)
+            continue
+        invite.status = "cancelled"
+        invite.responded_at = datetime.now(UTC)
+        cancelled.append(token)
+
+    await audit_service.record_event(
+        db, event_type="invite.bulk_cancelled", subject_id=current_user.id, owner_id=current_user.id, content={"count": len(cancelled)}
+    )
+    await db.flush()
+    return BulkInviteCancelResponse(cancelled=cancelled, skipped=skipped)
 
 
 @router.post("/{token}/resend", response_model=InviteResponse)

@@ -9,13 +9,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import CurrentUser, get_current_user, get_tenant_db, require_role
 from app.models.tenant import LoginEvent, PersonAlertRule, TeamNote, TeamRole, User
 from app.schemas.user import (
+    BulkStatusRequest,
+    BulkStatusResponse,
     CreateNoteRequest,
     CreatePersonAlertRuleRequest,
     LoginEventResponse,
     PersonAlertRuleResponse,
     TeamNoteResponse,
     UpdateRoleRequest,
+    UpdateSafeguardingLeadRequest,
     UpdateSettingsRequest,
+    UpdateStatusRequest,
     UserProfile,
 )
 from app.services import audit as audit_service
@@ -57,9 +61,50 @@ async def update_my_settings(
 async def list_team(
     current_user: CurrentUser = Depends(require_role(*_TEAM_MANAGERS)),
     db: AsyncSession = Depends(get_tenant_db),
+    q: str | None = None,
+    include_archived: bool = False,
+    limit: int = 100,
+    offset: int = 0,
 ) -> list[User]:
-    result = await db.execute(select(User).order_by(User.created_at))
+    stmt = select(User).order_by(User.created_at)
+    if not include_archived:
+        stmt = stmt.where(User.status != "archived")
+    if q and q.strip():
+        like = f"%{q.strip().lower()}%"
+        stmt = stmt.where((func.lower(User.name).like(like)) | (func.lower(User.email).like(like)))
+    stmt = stmt.offset(offset).limit(limit)
+
+    result = await db.execute(stmt)
     return list(result.scalars().all())
+
+
+@router.post("/team/bulk-status", response_model=BulkStatusResponse)
+async def bulk_update_status(
+    payload: BulkStatusRequest,
+    current_user: CurrentUser = Depends(require_role(*_TEAM_MANAGERS)),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> BulkStatusResponse:
+    """Registered before /team/{user_id} deliberately - see list_login_history
+    below for why route-registration order matters here."""
+    updated: list[uuid.UUID] = []
+    skipped: list[uuid.UUID] = []
+    for user_id in payload.user_ids:
+        user = await db.get(User, user_id)
+        if user is None:
+            skipped.append(user_id)
+            continue
+        user.status = payload.status
+        updated.append(user_id)
+
+    await audit_service.record_event(
+        db,
+        event_type="user.bulk_status_changed",
+        subject_id=current_user.id,
+        owner_id=current_user.id,
+        content={"user_ids": [str(uid) for uid in updated], "status": payload.status},
+    )
+    await db.flush()
+    return BulkStatusResponse(updated=updated, skipped=skipped)
 
 
 @router.get("/team/login-history", response_model=list[LoginEventResponse])
@@ -121,6 +166,56 @@ async def update_role(
         subject_id=user.id,
         owner_id=current_user.id,
         content={"old_role": old_role.value, "new_role": payload.role.value},
+    )
+    await db.flush()
+    return user
+
+
+@router.patch("/team/{user_id}/safeguarding-lead", response_model=UserProfile)
+async def update_safeguarding_lead(
+    user_id: uuid.UUID,
+    payload: UpdateSafeguardingLeadRequest,
+    current_user: CurrentUser = Depends(require_role(*_ROLE_ADMINS)),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> User:
+    user = await db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+    user.is_safeguarding_lead = payload.is_safeguarding_lead
+    await audit_service.record_event(
+        db,
+        event_type="user.safeguarding_lead_changed",
+        subject_id=user.id,
+        owner_id=current_user.id,
+        content={"is_safeguarding_lead": payload.is_safeguarding_lead},
+    )
+    await db.flush()
+    return user
+
+
+@router.patch("/team/{user_id}/status", response_model=UserProfile)
+async def update_status(
+    user_id: uuid.UUID,
+    payload: UpdateStatusRequest,
+    current_user: CurrentUser = Depends(require_role(*_TEAM_MANAGERS)),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> User:
+    """Archival is an org-management/reporting state, not a security lock -
+    an archived user's existing tokens keep working. A real deactivation
+    (session revocation / login block) is separate, future work."""
+    user = await db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+    old_status = user.status
+    user.status = payload.status
+    await audit_service.record_event(
+        db,
+        event_type="user.status_changed",
+        subject_id=user.id,
+        owner_id=current_user.id,
+        content={"old": old_status, "new": payload.status},
     )
     await db.flush()
     return user
