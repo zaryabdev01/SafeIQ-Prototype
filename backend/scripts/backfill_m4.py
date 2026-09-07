@@ -6,12 +6,10 @@ shape onto *existing* tenant schemas, phase by phase, as Milestone 4 model
 changes land - `metadata.create_all` is idempotent (only creates tables that
 are still missing), so re-running it costs nothing.
 
-Phase 2 (this revision): adds the `rags` and `rag_assignments` tables to
-every existing tenant - pure new tables, so a `create_all` pass is all that's
-needed. (Phase 1, landing on a separate branch, adds `users.status` /
-`users.is_safeguarding_lead` via an ALTER TABLE step here too - when both
-phases are merged, this file gains that step back; see that phase's version
-of this script.)
+Phase 1: adds `users.status` and `users.is_safeguarding_lead` via an ALTER
+TABLE step. Phase 2 (Rag, RagAssignment) and Phase 3 (Alert,
+AlertStageTransition, Action) are pure new tables, so they need no ALTER
+statement - only the `create_all` pass below.
 
     python -m scripts.backfill_m4            # apply
     python -m scripts.backfill_m4 --dry-run  # list target schemas only
@@ -25,18 +23,27 @@ from __future__ import annotations
 import argparse
 import asyncio
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.db.base import TenantBase
 from app.db.control_models import Organisation
 from app.db.session import ControlSessionLocal, engine
 from app.models import tenant as tenant_models  # noqa: F401  (registers tables on TenantBase.metadata)
 
+_PHASE_1_COLUMN_STATEMENTS = (
+    "ALTER TABLE \"{schema}\".users ADD COLUMN IF NOT EXISTS status varchar(20) NOT NULL DEFAULT 'active'",
+    'ALTER TABLE "{schema}".users ADD COLUMN IF NOT EXISTS is_safeguarding_lead boolean NOT NULL DEFAULT false',
+)
+
 
 async def _backfill_schema(schema: str) -> None:
     tenant_engine = engine.execution_options(schema_translate_map={"tenant": schema})
     async with tenant_engine.begin() as conn:
         await conn.run_sync(TenantBase.metadata.create_all)  # no-op for tables that already exist
+
+    async with engine.begin() as conn:
+        for statement in _PHASE_1_COLUMN_STATEMENTS:
+            await conn.execute(text(statement.format(schema=schema)))
 
 
 async def _run(*, dry_run: bool) -> None:

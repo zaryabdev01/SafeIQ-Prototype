@@ -95,9 +95,11 @@ open to any org role. Analytics (task 27) stay per-tenant.
 
 Tasks 28-30 (invite by email/magic link, accept-invite flow, invite log with resend/cancel) were
 already built as part of Milestone 2's `app/api/routes/invites.py` - they turned out to be needed
-early, to have any way to create a second user for testing signup/login. Task 31 followed, and
-tasks 32/34 now have a real (thin) `Rag` entity to assign against - see
-`.claude/specs/m4-team-management.md` Phase 2 and its §4.1 for the deliberate scope boundary. Task
+early, to have any way to create a second user for testing signup/login. Task 31 followed. Tasks
+32/34 now have a real (thin) `Rag` entity to assign against, and the client-feedback addendum's
+tasks 96/105/106/108 are real too - see `.claude/specs/m4-team-management.md` (Phases 1-3) for the
+phase breakdown and their deliberate scope boundaries; the standing "client feedback = UI/mock-store
+only" rule is explicitly overridden for the addendum items, per that spec's Decisions section. Task
 33 remains **not implemented** - see below.
 
 | Task | Implementation |
@@ -107,21 +109,17 @@ tasks 32/34 now have a real (thin) `Rag` entity to assign against - see
 | 32. RAG assignments with access codes | `app/api/routes/rags.py` - `Rag` is a **thin, identity/lifecycle-only stub** (draft/published/archived; no ingestion, retrieval, or documents - that's Milestone 5, which extends this same table rather than replacing it). `POST/GET/PATCH/DELETE /rags` (admin write, manager+ read) plus `POST/GET /rags/{id}/assignments`, `PATCH .../assignments/{aid}`, `POST .../assignments/{aid}/rotate-code` issue/rotate/revoke a human-readable access code (`app/services/access_code.py`) per (RAG, person). The code is **not yet an authentication factor** - Milestone 6 (chat agent) is what will eventually consume it to switch RAG context |
 | 33. Per-member activity view inside each RAG | **Not implemented yet** - Milestone 4 Phase 4 (aggregated profile + Employee×RAG activity feed), which builds on the `Rag`/`RagAssignment` foundation landed here |
 | 34. Assignment management | `app/api/routes/rags.py` - see task 32. A person can hold at most one *active* assignment per RAG (handler check + a real Postgres partial-unique index as the DB-level backstop); revoking keeps the row for history rather than deleting it |
-
-The client-feedback addendum's task 108 (staged alert model + 4-stage Actions pipeline) is real too, per
-`.claude/specs/m4-team-management.md` Phase 3 - a deliberate exception to the standing "client feedback
-= UI/mock-store only" rule for this and the other M4 addendum items:
-
-| Task | Implementation |
-|---|---|
+| 96. Safeguarding Lead + content-level visibility | `User.is_safeguarding_lead`; `PATCH /team/{id}/safeguarding-lead` (admin-only, `_ROLE_ADMINS`). `app/api/deps.py::can_view_conversation_content` is the pure gating function (mirrors the frontend's `permissions.ts`) - not wired into a route yet, since there's no real conversation content until Milestone 6; Phase 4 of the M4 spec wires it |
+| 105. Search + bulk on team/invite lists | `GET /team?q=&include_archived=&limit=&offset=`, `GET /invites?q=&status=&limit=&offset=`, `POST /team/bulk-status`, `POST /invites/bulk-resend`, `POST /invites/bulk-cancel` - all in `app/api/routes/{users,invites}.py` |
+| 106. Archive status for team members | `User.status` (`active`\|`archived`); `PATCH /team/{id}/status`. Deliberately **not** a login block - an archived user's existing tokens keep working; see the route docstring |
 | 108. Staged alert model + Actions pipeline | `app/api/routes/alerts.py` - `Alert` is the alert **occurrence** (distinct from `PersonAlertRule`, config, and from the mock `AlertCase` chat-thread type). Its 6-stage lifecycle (`keyword_detected → signal_generated → context_assessment → alert_level_set → human_review → outcome`) is forward-only (`POST /alerts/{id}/advance`, validated against a module-level stage-order tuple, never enum arithmetic); reaching `outcome` requires a `resolved\|escalated\|no_action` outcome and closes the alert. No RAG engine generates these yet - creation is manual, and `POST /alerts` infers the starting stage from whether a `keyword` was supplied, mirroring what Milestone 5's automatic keyword detection will eventually do into the same table. `app/api/routes/actions.py` is the separate, shared `Action` entity (the addendum's 4-stage `tier`: `information_only\|recommended_action\|required_review\|urgent_action`) - built here because Milestone 4 Phase 4's profile dashboard and Milestone 7's org/employee dashboards both consume it |
 
 The frontend's team member profile page (`frontend/src/app/team/[id]/TeamMemberClient.tsx`) reflects
 this honestly: notes and alert rules are fully real when signed in for real, while the "flagged
 alert words" and "assigned RAG systems" sections show an explicit notice that they're waiting on
 Milestone 5, rather than silently rendering empty mock data that could be mistaken for a bug. Tasks
-32/34 above are backend-only as of this revision - the frontend real-mode wiring for them is a
-separate, still-pending phase (Phase 5 of the M4 spec).
+32/34/96/105/106/108 above are backend-only as of this revision - the frontend real-mode wiring for
+them is a separate, still-pending phase (Phase 5 of the M4 spec).
 
 ## Client feedback (17/08/2026) - Phase 1a: real login history
 
@@ -142,7 +140,7 @@ Covered by `tests/test_login_history.py`.
 | Script | Purpose |
 |---|---|
 | `scripts/migrate_tenant_onboarding.py` | Milestone 3 phase 2 - drops the now-unused per-tenant `onboarding_videos` table/FK after the catalogue moved to `control.onboarding_videos` |
-| `scripts/backfill_m4.py` | Milestone 4 - backfills any new tenant-schema table/column onto tenants provisioned before that Milestone 4 phase's model change landed. Idempotent; run after every M4 phase that changes the tenant schema |
+| `scripts/backfill_m4.py` | Milestone 4 - backfills `users.status` / `users.is_safeguarding_lead` (Phase 1) plus any new tenant-schema table from later phases onto tenants provisioned before that Milestone 4 phase's model change landed. Idempotent; run after every M4 phase that changes the tenant schema |
 
 ## How multi-tenancy actually works here
 

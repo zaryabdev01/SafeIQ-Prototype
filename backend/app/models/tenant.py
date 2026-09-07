@@ -49,6 +49,14 @@ class User(TenantBase):
     two_factor_enabled: Mapped[bool] = mapped_column(default=False)
     ip_lock_enabled: Mapped[bool] = mapped_column(default=False)
     direct_sign_up: Mapped[bool] = mapped_column(default=False)
+    # Milestone 4 (Team Management), task 106 - "active"|"archived". Archival is an
+    # org-management/reporting state, not a security lock: an archived user's
+    # existing tokens keep working. A real deactivation (session revocation / login
+    # block) is separate, future work.
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    # Milestone 4, task 96 - gates raw conversation-content visibility alongside
+    # _ROLE_ADMINS. Mirrors frontend/src/lib/permissions.ts::canViewConversationContent.
+    is_safeguarding_lead: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 

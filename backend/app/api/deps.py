@@ -97,3 +97,15 @@ def require_role(*roles: TeamRole):
         return current_user
 
     return _dependency
+
+
+def can_view_conversation_content(role: TeamRole, is_safeguarding_lead: bool) -> bool:
+    """Milestone 4, task 96. Mirrors
+    frontend/src/lib/permissions.ts::canViewConversationContent - a line
+    manager sees alert/action summaries, but only a Safeguarding Lead (or an
+    org admin) may open raw conversation text. `is_safeguarding_lead` isn't in
+    the JWT (it can change after a token was issued), so a caller resolves it
+    with a DB lookup rather than trusting a claim - see the Phase 4
+    `require_conversation_access` dependency that will wrap this once the
+    Conversations tab has real content to gate."""
+    return role in (TeamRole.super_admin, TeamRole.administrator) or is_safeguarding_lead
