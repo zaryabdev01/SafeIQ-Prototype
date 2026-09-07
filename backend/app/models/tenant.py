@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import JSON, ForeignKey, Index, String, text
+from sqlalchemy import JSON, Date, ForeignKey, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import TenantBase, utcnow
@@ -262,3 +262,120 @@ class RagAssignment(TenantBase):
     assigned_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id"))
     assigned_at: Mapped[datetime] = mapped_column(default=utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class AlertOutcome(enum.StrEnum):
+    resolved = "resolved"
+    escalated = "escalated"
+    no_action = "no_action"
+
+
+class AlertStage(enum.StrEnum):
+    """Milestone 4, task 108 - the client's 6-stage lifecycle (matches
+    frontend/src/lib/types.ts::AlertStage). Order is significant:
+    ALERT_STAGE_ORDER below is what forward-only transition validation
+    indexes into - a plain tuple, not enum arithmetic, since StrEnum members
+    don't support ordering comparisons and mypy wouldn't catch a mistake
+    there (see .claude/specs/m4-team-management.md §7)."""
+
+    keyword_detected = "keyword_detected"
+    signal_generated = "signal_generated"
+    context_assessment = "context_assessment"
+    alert_level_set = "alert_level_set"
+    human_review = "human_review"
+    outcome = "outcome"
+
+
+ALERT_STAGE_ORDER: tuple[AlertStage, ...] = (
+    AlertStage.keyword_detected,
+    AlertStage.signal_generated,
+    AlertStage.context_assessment,
+    AlertStage.alert_level_set,
+    AlertStage.human_review,
+    AlertStage.outcome,
+)
+
+
+class Alert(TenantBase):
+    """Milestone 4, task 108 - the alert *occurrence*, distinct from
+    PersonAlertRule (config, already real above) and from the mock
+    `AlertCase` (chat-thread type in frontend/src/lib/types.ts - not built
+    here). No RAG engine generates these yet: this milestone provides manual
+    create + stage transitions so the Phase 4 profile dashboard has real
+    data to show; Milestone 5 wires automatic creation from keyword
+    detection into the same table."""
+
+    __tablename__ = "alerts"
+    __table_args__ = _TENANT_SCHEMA
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    subject_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id", ondelete="CASCADE"))
+    rag_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tenant.rags.id", ondelete="SET NULL"), nullable=True)
+    keyword: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    stage: Mapped[AlertStage] = mapped_column(default=AlertStage.keyword_detected)
+    severity: Mapped[AlertSeverity] = mapped_column(default=AlertSeverity.medium)
+    context: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    status: Mapped[str] = mapped_column(String(8), default="open")  # open | closed
+    outcome: Mapped[AlertOutcome | None] = mapped_column(nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id"))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    closed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    closed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tenant.users.id"), nullable=True)
+
+
+class AlertStageTransition(TenantBase):
+    __tablename__ = "alert_stage_transitions"
+    __table_args__ = (Index("ix_alert_stage_transitions_alert_created", "alert_id", "created_at"), _TENANT_SCHEMA)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    alert_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.alerts.id", ondelete="CASCADE"))
+    from_stage: Mapped[AlertStage | None] = mapped_column(nullable=True)  # null for the initial row
+    to_stage: Mapped[AlertStage]
+    note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    actor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id"))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class ActionTier(enum.StrEnum):
+    """Milestone 4, task 108's 4-stage Actions pipeline (also the shared
+    entity referenced by addendum 113 - Milestone 7's org/employee
+    dashboards will consume it too)."""
+
+    information_only = "information_only"
+    recommended_action = "recommended_action"
+    required_review = "required_review"
+    urgent_action = "urgent_action"
+
+
+class ActionPriority(enum.StrEnum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+    urgent = "urgent"
+
+
+class ActionStatus(enum.StrEnum):
+    open = "open"
+    in_progress = "in_progress"
+    completed = "completed"
+
+
+class Action(TenantBase):
+    __tablename__ = "actions"
+    __table_args__ = _TENANT_SCHEMA
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    tier: Mapped[ActionTier] = mapped_column(default=ActionTier.recommended_action)
+    priority: Mapped[ActionPriority] = mapped_column(default=ActionPriority.medium)
+    status: Mapped[ActionStatus] = mapped_column(default=ActionStatus.open)
+    assignee_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id"))
+    subject_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tenant.users.id"), nullable=True)
+    rag_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tenant.rags.id", ondelete="SET NULL"), nullable=True)
+    alert_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tenant.alerts.id", ondelete="SET NULL"), nullable=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id"))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)

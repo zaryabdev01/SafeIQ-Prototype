@@ -108,6 +108,14 @@ tasks 32/34 now have a real (thin) `Rag` entity to assign against - see
 | 33. Per-member activity view inside each RAG | **Not implemented yet** - Milestone 4 Phase 4 (aggregated profile + Employee×RAG activity feed), which builds on the `Rag`/`RagAssignment` foundation landed here |
 | 34. Assignment management | `app/api/routes/rags.py` - see task 32. A person can hold at most one *active* assignment per RAG (handler check + a real Postgres partial-unique index as the DB-level backstop); revoking keeps the row for history rather than deleting it |
 
+The client-feedback addendum's task 108 (staged alert model + 4-stage Actions pipeline) is real too, per
+`.claude/specs/m4-team-management.md` Phase 3 - a deliberate exception to the standing "client feedback
+= UI/mock-store only" rule for this and the other M4 addendum items:
+
+| Task | Implementation |
+|---|---|
+| 108. Staged alert model + Actions pipeline | `app/api/routes/alerts.py` - `Alert` is the alert **occurrence** (distinct from `PersonAlertRule`, config, and from the mock `AlertCase` chat-thread type). Its 6-stage lifecycle (`keyword_detected → signal_generated → context_assessment → alert_level_set → human_review → outcome`) is forward-only (`POST /alerts/{id}/advance`, validated against a module-level stage-order tuple, never enum arithmetic); reaching `outcome` requires a `resolved\|escalated\|no_action` outcome and closes the alert. No RAG engine generates these yet - creation is manual, and `POST /alerts` infers the starting stage from whether a `keyword` was supplied, mirroring what Milestone 5's automatic keyword detection will eventually do into the same table. `app/api/routes/actions.py` is the separate, shared `Action` entity (the addendum's 4-stage `tier`: `information_only\|recommended_action\|required_review\|urgent_action`) - built here because Milestone 4 Phase 4's profile dashboard and Milestone 7's org/employee dashboards both consume it |
+
 The frontend's team member profile page (`frontend/src/app/team/[id]/TeamMemberClient.tsx`) reflects
 this honestly: notes and alert rules are fully real when signed in for real, while the "flagged
 alert words" and "assigned RAG systems" sections show an explicit notice that they're waiting on
@@ -166,6 +174,9 @@ invite accept) can be routed to the right tenant schema before we know who's ask
   factor.** Milestone 6 (chat agent) is what will eventually consume it to switch RAG context; until
   then it's a human-readable identifier, stored as-is (not hashed) since it isn't security-bearing
   yet - revisit if M6 makes it one.
+- **`Alert` occurrences are created manually, not from real keyword detection.** `POST /alerts`
+  infers a plausible starting stage from whether a `keyword` was supplied, but there's no RAG engine
+  watching conversations yet - Milestone 5 wires automatic creation into this same table.
 - **Audit-ledger insert-only enforcement is partial.** `provision_tenant_schema` revokes
   UPDATE/DELETE on `audit_ledger` from `PUBLIC`, but Postgres always lets a table's *owner* role
   bypass that. True enforcement against the app's own runtime connection needs a second,
