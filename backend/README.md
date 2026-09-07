@@ -96,30 +96,39 @@ open to any org role. Analytics (task 27) stay per-tenant.
 Tasks 28-30 (invite by email/magic link, accept-invite flow, invite log with resend/cancel) were
 already built as part of Milestone 2's `app/api/routes/invites.py` - they turned out to be needed
 early, to have any way to create a second user for testing signup/login. Task 31 followed. Tasks
-32/34 now have a real (thin) `Rag` entity to assign against, and the client-feedback addendum's
-tasks 96/105/106/108 are real too - see `.claude/specs/m4-team-management.md` (Phases 1-3) for the
-phase breakdown and their deliberate scope boundaries; the standing "client feedback = UI/mock-store
-only" rule is explicitly overridden for the addendum items, per that spec's Decisions section. Task
-33 remains **not implemented** - see below.
+32-34 now have a real (thin) `Rag` entity to assign against and a real Employee×RAG activity view,
+and the client-feedback addendum's tasks 96/105/106/107/108 are real too - see
+`.claude/specs/m4-team-management.md` (Phases 1-4) for the phase breakdown and their deliberate scope
+boundaries; the standing "client feedback = UI/mock-store only" rule is explicitly overridden for
+the addendum items, per that spec's Decisions section.
 
 | Task | Implementation |
 |---|---|
 | 28-30. Invites, accept flow, invite log | Already built in Milestone 2 - `app/api/routes/invites.py` |
 | 31. Member profiles (details, notes, alerts) | `GET /team/{id}` for the profile; `GET/POST /team/{id}/notes` and `GET/POST/DELETE /team/{id}/alert-rules` for notes and custom alert-rule configuration - both gated to manager/support/administrator/super_admin (`_TEAM_MANAGERS` in `app/api/routes/users.py`), matching who the frontend already let manage this |
 | 32. RAG assignments with access codes | `app/api/routes/rags.py` - `Rag` is a **thin, identity/lifecycle-only stub** (draft/published/archived; no ingestion, retrieval, or documents - that's Milestone 5, which extends this same table rather than replacing it). `POST/GET/PATCH/DELETE /rags` (admin write, manager+ read) plus `POST/GET /rags/{id}/assignments`, `PATCH .../assignments/{aid}`, `POST .../assignments/{aid}/rotate-code` issue/rotate/revoke a human-readable access code (`app/services/access_code.py`) per (RAG, person). The code is **not yet an authentication factor** - Milestone 6 (chat agent) is what will eventually consume it to switch RAG context |
-| 33. Per-member activity view inside each RAG | **Not implemented yet** - Milestone 4 Phase 4 (aggregated profile + Employee×RAG activity feed), which builds on the `Rag`/`RagAssignment` foundation landed here |
+| 33. Per-member activity view inside each RAG | `app/api/routes/team_profile.py` - `GET /team/{id}/rags/{rag_id}` (record shell) plus lazy-loaded tabs `.../overview`, `.../conversations`, `.../alerts`, `.../actions`, `.../audit-log`. `.../conversations` is a documented stub (`{items: [], note: "..."}`) until Milestone 6; `.../audit-log` is a content-free projection (`event_type`/`owner`/`created_at` only - never `content`), the "separate, content-free Audit Log" the client asked for |
 | 34. Assignment management | `app/api/routes/rags.py` - see task 32. A person can hold at most one *active* assignment per RAG (handler check + a real Postgres partial-unique index as the DB-level backstop); revoking keeps the row for history rather than deleting it |
-| 96. Safeguarding Lead + content-level visibility | `User.is_safeguarding_lead`; `PATCH /team/{id}/safeguarding-lead` (admin-only, `_ROLE_ADMINS`). `app/api/deps.py::can_view_conversation_content` is the pure gating function (mirrors the frontend's `permissions.ts`) - not wired into a route yet, since there's no real conversation content until Milestone 6; Phase 4 of the M4 spec wires it |
+| 96. Safeguarding Lead + content-level visibility | `User.is_safeguarding_lead`; `PATCH /team/{id}/safeguarding-lead` (admin-only, `_ROLE_ADMINS`). `app/api/deps.py::can_view_conversation_content` is the pure gating function (mirrors the frontend's `permissions.ts`) - not wired into a route yet, since there's no real conversation content until Milestone 6 |
 | 105. Search + bulk on team/invite lists | `GET /team?q=&include_archived=&limit=&offset=`, `GET /invites?q=&status=&limit=&offset=`, `POST /team/bulk-status`, `POST /invites/bulk-resend`, `POST /invites/bulk-cancel` - all in `app/api/routes/{users,invites}.py` |
 | 106. Archive status for team members | `User.status` (`active`\|`archived`); `PATCH /team/{id}/status`. Deliberately **not** a login block - an archived user's existing tokens keep working; see the route docstring |
+| 107. Risk-and-support dashboard for one member | `GET /team/{id}/profile` (`app/api/routes/team_profile.py`) - header, summary cards (assigned RAGs / conversations, always 0 until M6 / open alerts / open actions), and a per-RAG `traffic_light` (`{level, label}` - always both, never colour alone, per the client's accessibility ask). The exact severity/action-count thresholds are a first defensible default (`app/services/risk_dashboard.py`), isolated as a pure function since the spec leaves the real business rule undefined |
 | 108. Staged alert model + Actions pipeline | `app/api/routes/alerts.py` - `Alert` is the alert **occurrence** (distinct from `PersonAlertRule`, config, and from the mock `AlertCase` chat-thread type). Its 6-stage lifecycle (`keyword_detected → signal_generated → context_assessment → alert_level_set → human_review → outcome`) is forward-only (`POST /alerts/{id}/advance`, validated against a module-level stage-order tuple, never enum arithmetic); reaching `outcome` requires a `resolved\|escalated\|no_action` outcome and closes the alert. No RAG engine generates these yet - creation is manual, and `POST /alerts` infers the starting stage from whether a `keyword` was supplied, mirroring what Milestone 5's automatic keyword detection will eventually do into the same table. `app/api/routes/actions.py` is the separate, shared `Action` entity (the addendum's 4-stage `tier`: `information_only\|recommended_action\|required_review\|urgent_action`) - built here because Milestone 4 Phase 4's profile dashboard and Milestone 7's org/employee dashboards both consume it |
 
 The frontend's team member profile page (`frontend/src/app/team/[id]/TeamMemberClient.tsx`) reflects
 this honestly: notes and alert rules are fully real when signed in for real, while the "flagged
 alert words" and "assigned RAG systems" sections show an explicit notice that they're waiting on
 Milestone 5, rather than silently rendering empty mock data that could be mistaken for a bug. Tasks
-32/34/96/105/106/108 above are backend-only as of this revision - the frontend real-mode wiring for
-them is a separate, still-pending phase (Phase 5 of the M4 spec).
+32-34/96/105-108 above are backend-only as of this revision - the frontend real-mode wiring for them
+is a separate, still-pending phase (Phase 5 of the M4 spec).
+
+`app/api/routes/team_profile.py`'s `.../overview` tab deliberately deviates from the M4 spec's §4.3:
+rather than a denormalised `RagActivityEvent` feed table written by every Phase 2/3 handler (which
+would mean reopening those already-shipped phases), it's a live aggregation query across
+`RagAssignment`/`Alert`/`AlertStageTransition`/`Action` for that (person, RAG) pair. Simpler
+consistency story at this data volume, at the cost of a few extra queries per call instead of one
+indexed read - a trade worth naming explicitly rather than leaving as a silent departure from the
+spec.
 
 ## Client feedback (17/08/2026) - Phase 1a: real login history
 
