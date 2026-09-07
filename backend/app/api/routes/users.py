@@ -7,7 +7,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, get_current_user, get_tenant_db, require_role
-from app.models.tenant import LoginEvent, PersonAlertRule, TeamNote, TeamRole, User
+from app.models.tenant import LoginEvent, PersonAlertRule, Rag, RagAssignment, TeamNote, TeamRole, User
+from app.schemas.rag import AssignmentResponse
 from app.schemas.user import (
     CreateNoteRequest,
     CreatePersonAlertRuleRequest,
@@ -124,6 +125,42 @@ async def update_role(
     )
     await db.flush()
     return user
+
+
+@router.get("/team/{user_id}/assignments", response_model=list[AssignmentResponse])
+async def list_user_assignments(
+    user_id: uuid.UUID,
+    current_user: CurrentUser = Depends(require_role(*_TEAM_MANAGERS)),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> list[AssignmentResponse]:
+    subject = await db.get(User, user_id)
+    if subject is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+    stmt = (
+        select(RagAssignment, Rag.name)
+        .join(Rag, Rag.id == RagAssignment.rag_id)
+        .where(RagAssignment.user_id == user_id)
+        .order_by(RagAssignment.assigned_at.desc())
+    )
+    result = await db.execute(stmt)
+    return [
+        AssignmentResponse(
+            id=assignment.id,
+            rag_id=assignment.rag_id,
+            rag_name=rag_name,
+            user_id=assignment.user_id,
+            user_name=subject.name,
+            user_email=subject.email,
+            access_code_last4=assignment.access_code[-4:],
+            status=assignment.status,
+            alert_owner_id=assignment.alert_owner_id,
+            assigned_by=assignment.assigned_by,
+            assigned_at=assignment.assigned_at,
+            revoked_at=assignment.revoked_at,
+        )
+        for assignment, rag_name in result.all()
+    ]
 
 
 async def _note_response(db: AsyncSession, note: TeamNote) -> TeamNoteResponse:

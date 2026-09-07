@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import audit, auth, internal, invites, kyc_webhook, onboarding, users
+from app.api.routes import audit, auth, internal, invites, kyc_webhook, onboarding, rags, users
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
@@ -10,3 +10,4 @@ api_router.include_router(audit.router)
 api_router.include_router(onboarding.router)
 api_router.include_router(kyc_webhook.router)
 api_router.include_router(internal.router)
+api_router.include_router(rags.router)

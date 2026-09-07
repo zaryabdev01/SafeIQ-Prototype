@@ -13,7 +13,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, ForeignKey, String
+from sqlalchemy import JSON, ForeignKey, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import TenantBase, utcnow
@@ -203,3 +203,62 @@ class AuditLedgerEntry(TenantBase):
     prev_hash: Mapped[str] = mapped_column(String(64))
     entry_hash: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class RagStatus(enum.StrEnum):
+    """Milestone 4 (Team Management), tasks 32/34 - a thin identity/lifecycle
+    stub. Milestone 5 (AI Knowledge Base) *extends* this table (ingestion,
+    retrieval config, vector-namespace ref, ...); it must not rename `rags`,
+    drop `id`/`name`/`status`, or change these values without a coordinated
+    migration, since RagAssignment/Alert/Action/RagActivityEvent all FK
+    `Rag.id`. See .claude/specs/m4-team-management.md §4.1."""
+
+    draft = "draft"
+    published = "published"
+    archived = "archived"
+
+
+class Rag(TenantBase):
+    __tablename__ = "rags"
+    __table_args__ = _TENANT_SCHEMA
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    status: Mapped[RagStatus] = mapped_column(default=RagStatus.draft)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id"))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+
+class RagAssignment(TenantBase):
+    """Milestone 4, tasks 32/34. `access_code` is issued/rotated/revoked here
+    but is deliberately not yet an authentication factor - Milestone 6 (chat
+    agent) is what will eventually consume it to switch RAG context; see
+    backend/README.md "Known simplifications".
+
+    The partial unique index is the DB-level backstop for "at most one active
+    assignment per (rag, user)"; the route handler's own check-then-409 is
+    what gives a clean error in the (overwhelmingly common) non-race case."""
+
+    __tablename__ = "rag_assignments"
+    __table_args__ = (
+        Index(
+            "ux_rag_assignments_active_rag_user",
+            "rag_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+        _TENANT_SCHEMA,
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    rag_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.rags.id", ondelete="RESTRICT"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id", ondelete="CASCADE"))
+    access_code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="active")  # active | revoked
+    alert_owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tenant.users.id"), nullable=True)
+    assigned_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.users.id"))
+    assigned_at: Mapped[datetime] = mapped_column(default=utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
