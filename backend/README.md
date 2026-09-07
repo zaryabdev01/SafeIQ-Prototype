@@ -95,21 +95,25 @@ open to any org role. Analytics (task 27) stay per-tenant.
 
 Tasks 28-30 (invite by email/magic link, accept-invite flow, invite log with resend/cancel) were
 already built as part of Milestone 2's `app/api/routes/invites.py` - they turned out to be needed
-early, to have any way to create a second user for testing signup/login. Only task 31 is new here;
-tasks 32-34 are explicitly **not implemented** - see below.
+early, to have any way to create a second user for testing signup/login. Task 31 followed, and
+tasks 32/34 now have a real (thin) `Rag` entity to assign against - see
+`.claude/specs/m4-team-management.md` Phase 2 and its §4.1 for the deliberate scope boundary. Task
+33 remains **not implemented** - see below.
 
 | Task | Implementation |
 |---|---|
 | 28-30. Invites, accept flow, invite log | Already built in Milestone 2 - `app/api/routes/invites.py` |
 | 31. Member profiles (details, notes, alerts) | `GET /team/{id}` for the profile; `GET/POST /team/{id}/notes` and `GET/POST/DELETE /team/{id}/alert-rules` for notes and custom alert-rule configuration - both gated to manager/support/administrator/super_admin (`_TEAM_MANAGERS` in `app/api/routes/users.py`), matching who the frontend already let manage this |
-| 32. RAG assignments with access codes | **Not implemented - hard-blocked.** There's no RAG entity in this backend yet (that's Milestone 5, AI Knowledge Base). Building an "assignment" against a RAG concept that doesn't exist server-side would just need rework once Milestone 5 lands, so it wasn't attempted |
-| 33. Per-member activity view inside each RAG | Same blocker as task 32 - also depends on the chat/question-asking flow (Milestone 6) |
-| 34. Assignment management | Same blocker as task 32 |
+| 32. RAG assignments with access codes | `app/api/routes/rags.py` - `Rag` is a **thin, identity/lifecycle-only stub** (draft/published/archived; no ingestion, retrieval, or documents - that's Milestone 5, which extends this same table rather than replacing it). `POST/GET/PATCH/DELETE /rags` (admin write, manager+ read) plus `POST/GET /rags/{id}/assignments`, `PATCH .../assignments/{aid}`, `POST .../assignments/{aid}/rotate-code` issue/rotate/revoke a human-readable access code (`app/services/access_code.py`) per (RAG, person). The code is **not yet an authentication factor** - Milestone 6 (chat agent) is what will eventually consume it to switch RAG context |
+| 33. Per-member activity view inside each RAG | **Not implemented yet** - Milestone 4 Phase 4 (aggregated profile + Employee×RAG activity feed), which builds on the `Rag`/`RagAssignment` foundation landed here |
+| 34. Assignment management | `app/api/routes/rags.py` - see task 32. A person can hold at most one *active* assignment per RAG (handler check + a real Postgres partial-unique index as the DB-level backstop); revoking keeps the row for history rather than deleting it |
 
 The frontend's team member profile page (`frontend/src/app/team/[id]/TeamMemberClient.tsx`) reflects
 this honestly: notes and alert rules are fully real when signed in for real, while the "flagged
 alert words" and "assigned RAG systems" sections show an explicit notice that they're waiting on
-Milestone 5, rather than silently rendering empty mock data that could be mistaken for a bug.
+Milestone 5, rather than silently rendering empty mock data that could be mistaken for a bug. Tasks
+32/34 above are backend-only as of this revision - the frontend real-mode wiring for them is a
+separate, still-pending phase (Phase 5 of the M4 spec).
 
 ## Client feedback (17/08/2026) - Phase 1a: real login history
 
@@ -124,6 +128,13 @@ of sync. `GET /team/login-history?q=&user_id=&limit=` (`app/api/routes/users.py`
 `GET /team/{user_id}` deliberately, since FastAPI matches path templates in registration order and
 the literal `/team/login-history` segment would otherwise be swallowed by that parameterised route.
 Covered by `tests/test_login_history.py`.
+
+## One-off maintenance scripts
+
+| Script | Purpose |
+|---|---|
+| `scripts/migrate_tenant_onboarding.py` | Milestone 3 phase 2 - drops the now-unused per-tenant `onboarding_videos` table/FK after the catalogue moved to `control.onboarding_videos` |
+| `scripts/backfill_m4.py` | Milestone 4 - backfills any new tenant-schema table/column onto tenants provisioned before that Milestone 4 phase's model change landed. Idempotent; run after every M4 phase that changes the tenant schema |
 
 ## How multi-tenancy actually works here
 
@@ -147,6 +158,14 @@ invite accept) can be routed to the right tenant schema before we know who's ask
   schema change to every *existing* tenant automatically. A real per-schema migration runner is
   follow-up work once the schema starts changing after tenants already exist. The control-plane
   schema (one instance, shared) does use real Alembic migrations - see `alembic/`.
+- **`Rag` is identity/lifecycle-only until Milestone 5.** No ingestion, chunking, embeddings,
+  retrieval, or documents - `.claude/specs/m4-team-management.md` §4.1 is the hand-off contract M5
+  must honour (extend the table, don't rename it or repurpose `RagStatus`'s values, since
+  `RagAssignment`/future `Alert`/`Action` all FK `Rag.id`).
+- **A RAG assignment's access code is issued/rotated/revoked but is not yet an authentication
+  factor.** Milestone 6 (chat agent) is what will eventually consume it to switch RAG context; until
+  then it's a human-readable identifier, stored as-is (not hashed) since it isn't security-bearing
+  yet - revisit if M6 makes it one.
 - **Audit-ledger insert-only enforcement is partial.** `provision_tenant_schema` revokes
   UPDATE/DELETE on `audit_ledger` from `PUBLIC`, but Postgres always lets a table's *owner* role
   bypass that. True enforcement against the app's own runtime connection needs a second,
