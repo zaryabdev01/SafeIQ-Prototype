@@ -11,9 +11,10 @@ import { Avatar } from "@/components/ui/Avatar";
 import { useApp } from "@/lib/store";
 import { timeAgo } from "@/lib/format";
 import { Pagination } from "@/components/ui/Pagination";
-import { Send, Link2, RotateCcw, XCircle, Copy, ChevronRight, Loader2, Search } from "lucide-react";
+import { Send, Link2, RotateCcw, XCircle, Copy, ChevronRight, Loader2, Search, ShieldCheck } from "lucide-react";
 import type { InviteStatus, TeamRole } from "@/lib/types";
 import { apiClient, ApiError, type ApiInvite, type ApiTeamRole, type ApiUserProfile } from "@/lib/apiClient";
+import { isOrgLevel } from "@/lib/permissions";
 
 const TEAM_ROLE_LABEL: Record<TeamRole, string> = {
   employee: "Employee",
@@ -73,6 +74,9 @@ export default function TeamPage() {
   const [teamSearch, setTeamSearch] = useState("");
   const [selectedInviteTokens, setSelectedInviteTokens] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [showRealArchived, setShowRealArchived] = useState(false);
+  const [selectedRealUserIds, setSelectedRealUserIds] = useState<Set<string>>(new Set());
+  const [teamBulkBusy, setTeamBulkBusy] = useState(false);
 
   // --- Mock mode: archive status (client feedback, 17/08/2026, gap-analysis §4) ---
   const [mockTeamSearch, setMockTeamSearch] = useState("");
@@ -102,7 +106,9 @@ export default function TeamPage() {
     setRealLoading(true);
     setRealError("");
     try {
-      const [team, invitesList] = await Promise.all([apiClient.listTeam(), apiClient.listInvites()]);
+      // Always pull archived accounts too (client-side "Show archived" toggle
+      // below decides visibility) rather than re-fetching on every toggle.
+      const [team, invitesList] = await Promise.all([apiClient.listTeam({ includeArchived: true }), apiClient.listInvites()]);
       setRealTeam(team.filter((member) => member.team_role !== "super_admin"));
       setRealInvites(invitesList);
     } catch (err) {
@@ -188,7 +194,7 @@ export default function TeamPage() {
   async function bulkResendSelected() {
     setBulkBusy(true);
     try {
-      for (const token of selectedInviteTokens) await apiClient.resendInvite(token);
+      await apiClient.bulkResendInvites([...selectedInviteTokens]);
       setSelectedInviteTokens(new Set());
       await refreshReal();
     } catch (err) {
@@ -201,13 +207,53 @@ export default function TeamPage() {
   async function bulkCancelSelected() {
     setBulkBusy(true);
     try {
-      for (const token of selectedInviteTokens) await apiClient.cancelInvite(token);
+      await apiClient.bulkCancelInvites([...selectedInviteTokens]);
       setSelectedInviteTokens(new Set());
       await refreshReal();
     } catch (err) {
       setRealError(err instanceof ApiError ? err.message : "Could not cancel the selected invites.");
     } finally {
       setBulkBusy(false);
+    }
+  }
+
+  function toggleRealUserSelected(userId: string) {
+    setSelectedRealUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
+
+  async function bulkSetRealStatus(status: "active" | "archived") {
+    setTeamBulkBusy(true);
+    try {
+      await apiClient.bulkUpdateStatus([...selectedRealUserIds], status);
+      setSelectedRealUserIds(new Set());
+      await refreshReal();
+    } catch (err) {
+      setRealError(err instanceof ApiError ? err.message : "Could not update status for the selected people.");
+    } finally {
+      setTeamBulkBusy(false);
+    }
+  }
+
+  async function toggleRealArchiveStatus(u: ApiUserProfile) {
+    try {
+      await apiClient.updateUserStatus(u.id, u.status === "archived" ? "active" : "archived");
+      await refreshReal();
+    } catch (err) {
+      setRealError(err instanceof ApiError ? err.message : "Could not update that person's status.");
+    }
+  }
+
+  async function toggleRealSafeguardingLead(u: ApiUserProfile) {
+    try {
+      await apiClient.updateSafeguardingLead(u.id, !u.is_safeguarding_lead);
+      await refreshReal();
+    } catch (err) {
+      setRealError(err instanceof ApiError ? err.message : "Could not update that person's Safeguarding Lead status.");
     }
   }
 
@@ -224,7 +270,9 @@ export default function TeamPage() {
     clampedRealInvitePage * PAGE_SIZE
   );
 
-  const filteredRealTeam = realTeam.filter((u) => {
+  const archivedRealCount = realTeam.filter((u) => u.status === "archived").length;
+  const visibleRealTeam = realTeam.filter((u) => (showRealArchived ? true : u.status !== "archived"));
+  const filteredRealTeam = visibleRealTeam.filter((u) => {
     const q = teamSearch.trim().toLowerCase();
     if (!q) return true;
     return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.job_title ?? "").toLowerCase().includes(q);
@@ -280,7 +328,7 @@ export default function TeamPage() {
   const myLiveAlerts = currentUser ? liveAlertsFor(currentUser.id) : [];
   const myManagers = currentUser ? managersFor(currentUser.id) : [];
 
-  const memberCount = isRealSession ? realTeam.length : employees.length - archivedCount;
+  const memberCount = isRealSession ? realTeam.length - archivedRealCount : employees.length - archivedCount;
   const pendingCount = isRealSession ? realInvites.filter((i) => i.status === "pending").length : invites.filter((i) => i.status === "pending").length;
 
   return (
@@ -483,15 +531,28 @@ export default function TeamPage() {
           <h2 className="text-sm font-semibold text-slate-800">Team members</h2>
           <div className="flex items-center gap-2">
             {isRealSession && (
-              <div className="relative w-52">
-                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={teamSearch}
-                  onChange={(e) => setTeamSearch(e.target.value)}
-                  placeholder="Search team members"
-                  className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/30"
-                />
-              </div>
+              <>
+                <div className="relative w-52">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={teamSearch}
+                    onChange={(e) => setTeamSearch(e.target.value)}
+                    placeholder="Search team members"
+                    className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                  />
+                </div>
+                {archivedRealCount > 0 && (
+                  <button
+                    onClick={() => {
+                      setShowRealArchived((v) => !v);
+                      setTeamPage(1);
+                    }}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg border whitespace-nowrap ${showRealArchived ? "border-brand text-brand bg-brand/5" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}
+                  >
+                    {showRealArchived ? "Hide archived" : `Show archived (${archivedRealCount})`}
+                  </button>
+                )}
+              </>
             )}
             {!isRealSession && (
               <>
@@ -523,6 +584,20 @@ export default function TeamPage() {
             <Badge tone="slate">{memberCount}</Badge>
           </div>
         </CardHeader>
+        {isRealSession && selectedRealUserIds.size > 0 && (
+          <div className="px-5 py-2.5 bg-brand/5 border-b border-slate-100 flex items-center gap-3">
+            <span className="text-xs text-slate-600">{selectedRealUserIds.size} selected</span>
+            <Button size="sm" variant="ghost" onClick={() => bulkSetRealStatus("archived")} disabled={teamBulkBusy}>
+              {teamBulkBusy ? <Loader2 size={13} className="animate-spin" /> : null} Archive selected
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => bulkSetRealStatus("active")} disabled={teamBulkBusy}>
+              {teamBulkBusy ? <Loader2 size={13} className="animate-spin" /> : null} Unarchive selected
+            </Button>
+            <button onClick={() => setSelectedRealUserIds(new Set())} className="text-xs text-slate-400 hover:text-slate-600 ml-auto">
+              Clear
+            </button>
+          </div>
+        )}
         {!isRealSession && selectedEmployeeIds.size > 0 && (
           <div className="px-5 py-2.5 bg-brand/5 border-b border-slate-100 flex items-center gap-3">
             <span className="text-xs text-slate-600">{selectedEmployeeIds.size} selected</span>
@@ -539,35 +614,60 @@ export default function TeamPage() {
         )}
         <div className="divide-y divide-[var(--border-soft)]">
           {isRealSession
-            ? pagedRealTeam.map((u) => (
-                <div key={u.id} className="px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors">
-                  <Link href={`/team/${u.id}`} className="flex items-center gap-3 flex-1 min-w-0">
-                    <Avatar name={u.name} color="#4f46e5" size={36} />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-slate-800 truncate">{u.name}</p>
-                      <p className="text-xs text-slate-500 truncate">
-                        {u.job_title ?? "Team member"} · {u.email}
-                      </p>
-                    </div>
-                  </Link>
-                  <Select
-                    value={u.team_role}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => changeRealRole(u.id, e.target.value as ApiTeamRole)}
-                    className="!w-auto text-xs py-1.5"
+            ? pagedRealTeam.map((u) => {
+                const archived = u.status === "archived";
+                const canManageSafeguarding = isOrgLevel(currentUser);
+                return (
+                  <div
+                    key={u.id}
+                    className={`px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors ${archived ? "opacity-60" : ""}`}
                   >
-                    {(Object.keys(TEAM_ROLE_LABEL) as TeamRole[]).map((r) => (
-                      <option key={r} value={r}>
-                        {TEAM_ROLE_LABEL[r]}
-                      </option>
-                    ))}
-                  </Select>
-                  <Badge tone={u.email_verified ? "green" : "amber"}>{u.email_verified ? "Verified" : "Unverified"}</Badge>
-                  <Link href={`/team/${u.id}`}>
-                    <ChevronRight size={16} className="text-slate-300" />
-                  </Link>
-                </div>
-              ))
+                    <input
+                      type="checkbox"
+                      checked={selectedRealUserIds.has(u.id)}
+                      onChange={() => toggleRealUserSelected(u.id)}
+                      className="shrink-0"
+                    />
+                    <Link href={`/team/${u.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                      <Avatar name={u.name} color="#4f46e5" size={36} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-800 truncate">{u.name}</p>
+                        <p className="text-xs text-slate-500 truncate">
+                          {u.job_title ?? "Team member"} · {u.email}
+                        </p>
+                      </div>
+                    </Link>
+                    {archived && <Badge tone="slate">Archived</Badge>}
+                    <Badge
+                      tone={u.is_safeguarding_lead ? "amber" : "slate"}
+                      onClick={canManageSafeguarding ? (e) => { e.preventDefault(); e.stopPropagation(); void toggleRealSafeguardingLead(u); } : undefined}
+                      className={canManageSafeguarding ? "cursor-pointer select-none" : ""}
+                      title={canManageSafeguarding ? "Click to toggle Safeguarding Lead" : undefined}
+                    >
+                      <ShieldCheck size={11} /> {u.is_safeguarding_lead ? "Safeguarding Lead" : "Not Safeguarding Lead"}
+                    </Badge>
+                    <Select
+                      value={u.team_role}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => changeRealRole(u.id, e.target.value as ApiTeamRole)}
+                      className="!w-auto text-xs py-1.5"
+                    >
+                      {(Object.keys(TEAM_ROLE_LABEL) as TeamRole[]).map((r) => (
+                        <option key={r} value={r}>
+                          {TEAM_ROLE_LABEL[r]}
+                        </option>
+                      ))}
+                    </Select>
+                    <Badge tone={u.email_verified ? "green" : "amber"}>{u.email_verified ? "Verified" : "Unverified"}</Badge>
+                    <Button size="sm" variant="ghost" onClick={() => void toggleRealArchiveStatus(u)}>
+                      {archived ? "Unarchive" : "Archive"}
+                    </Button>
+                    <Link href={`/team/${u.id}`}>
+                      <ChevronRight size={16} className="text-slate-300" />
+                    </Link>
+                  </div>
+                );
+              })
             : pagedEmployees.map((u) => {
                 const codes = ragAssignments.filter((a) => a.userId === u.id);
                 const liveAlerts = liveAlertsFor(u.id);

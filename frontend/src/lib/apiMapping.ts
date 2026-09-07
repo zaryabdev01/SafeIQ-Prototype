@@ -35,6 +35,8 @@ export function mapApiUserToAppUser(profile: ApiUserProfile, orgId: string): App
     ipLockEnabled: false,
     allowedContacts: [],
     directSignUp: true,
+    status: profile.status,
+    isSafeguardingLead: profile.is_safeguarding_lead,
     createdAt: new Date().toISOString(),
   };
 }

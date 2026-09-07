@@ -121,6 +121,8 @@ export interface OrganisationLookup {
   organisation_name: string;
 }
 
+export type ApiUserStatus = "active" | "archived";
+
 export interface ApiUserProfile {
   id: string;
   name: string;
@@ -131,6 +133,23 @@ export interface ApiUserProfile {
   language: string | null;
   email_verified: boolean;
   kyc_status: string;
+  status: ApiUserStatus;
+  is_safeguarding_lead: boolean;
+}
+
+export interface ApiBulkStatusResult {
+  updated: string[];
+  skipped: string[];
+}
+
+export interface ApiBulkInviteResendResult {
+  resent: string[];
+  skipped: string[];
+}
+
+export interface ApiBulkInviteCancelResult {
+  cancelled: string[];
+  skipped: string[];
 }
 
 export interface ApiInvite {
@@ -260,7 +279,27 @@ export const apiClient = {
   updateSettings: (payload: { country?: string; language?: string; job_title?: string }) =>
     request<ApiUserProfile>("/me/settings", { method: "PATCH", body: payload, auth: true }),
 
-  listTeam: () => request<ApiUserProfile[]>("/team", { auth: true }),
+  listTeam: (params: { q?: string; includeArchived?: boolean; limit?: number; offset?: number } = {}) => {
+    const query: Record<string, string> = {};
+    if (params.q) query.q = params.q;
+    if (params.includeArchived) query.include_archived = "true";
+    if (params.limit) query.limit = String(params.limit);
+    if (params.offset) query.offset = String(params.offset);
+    return request<ApiUserProfile[]>("/team", { auth: true, query });
+  },
+
+  updateSafeguardingLead: (userId: string, isSafeguardingLead: boolean) =>
+    request<ApiUserProfile>(`/team/${userId}/safeguarding-lead`, {
+      method: "PATCH",
+      body: { is_safeguarding_lead: isSafeguardingLead },
+      auth: true,
+    }),
+
+  updateUserStatus: (userId: string, status: ApiUserStatus) =>
+    request<ApiUserProfile>(`/team/${userId}/status`, { method: "PATCH", body: { status }, auth: true }),
+
+  bulkUpdateStatus: (userIds: string[], status: ApiUserStatus) =>
+    request<ApiBulkStatusResult>("/team/bulk-status", { method: "POST", body: { user_ids: userIds, status }, auth: true }),
 
   listLoginHistory: (params: { q?: string; user_id?: string; limit?: number } = {}) => {
     const query: Record<string, string> = {};
@@ -289,11 +328,24 @@ export const apiClient = {
 
   createInvite: (payload: { email?: string; role: ApiTeamRole }) => request<ApiInvite>("/invites", { method: "POST", body: payload, auth: true }),
 
-  listInvites: () => request<ApiInvite[]>("/invites", { auth: true }),
+  listInvites: (params: { q?: string; status?: string; limit?: number; offset?: number } = {}) => {
+    const query: Record<string, string> = {};
+    if (params.q) query.q = params.q;
+    if (params.status) query.status = params.status;
+    if (params.limit) query.limit = String(params.limit);
+    if (params.offset) query.offset = String(params.offset);
+    return request<ApiInvite[]>("/invites", { auth: true, query });
+  },
 
   resendInvite: (token: string) => request<ApiInvite>(`/invites/${token}/resend`, { method: "POST", auth: true }),
 
   cancelInvite: (token: string) => request<void>(`/invites/${token}/cancel`, { method: "POST", auth: true }),
+
+  bulkResendInvites: (tokens: string[]) =>
+    request<ApiBulkInviteResendResult>("/invites/bulk-resend", { method: "POST", body: { tokens }, auth: true }),
+
+  bulkCancelInvites: (tokens: string[]) =>
+    request<ApiBulkInviteCancelResult>("/invites/bulk-cancel", { method: "POST", body: { tokens }, auth: true }),
 
   previewInvite: (token: string) => request<ApiInvitePreview>(`/invites/${token}`),
 
