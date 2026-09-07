@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -18,6 +19,8 @@ class UserProfile(BaseModel):
     language: str | None
     email_verified: bool
     kyc_status: str
+    status: str
+    is_safeguarding_lead: bool
 
     model_config = {"from_attributes": True}
 
@@ -30,6 +33,24 @@ class UpdateSettingsRequest(BaseModel):
 
 class UpdateRoleRequest(BaseModel):
     role: TeamRole
+
+
+class UpdateSafeguardingLeadRequest(BaseModel):
+    is_safeguarding_lead: bool
+
+
+class UpdateStatusRequest(BaseModel):
+    status: Literal["active", "archived"]
+
+
+class BulkStatusRequest(BaseModel):
+    user_ids: list[uuid.UUID] = Field(min_length=1)
+    status: Literal["active", "archived"]
+
+
+class BulkStatusResponse(BaseModel):
+    updated: list[uuid.UUID]
+    skipped: list[uuid.UUID]
 
 
 class TeamNoteResponse(BaseModel):

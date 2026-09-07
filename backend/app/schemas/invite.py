@@ -34,3 +34,17 @@ class AcceptInviteRequest(BaseModel):
     full_name: str = Field(min_length=2, max_length=200)
     email: EmailStr | None = None  # required only when the invite itself has no email (shareable link)
     password: str = Field(min_length=10)
+
+
+class BulkInviteTokensRequest(BaseModel):
+    tokens: list[str] = Field(min_length=1)
+
+
+class BulkInviteResendResponse(BaseModel):
+    resent: list[str]
+    skipped: list[str]
+
+
+class BulkInviteCancelResponse(BaseModel):
+    cancelled: list[str]
+    skipped: list[str]
