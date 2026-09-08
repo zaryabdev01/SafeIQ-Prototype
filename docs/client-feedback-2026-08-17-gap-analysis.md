@@ -6,9 +6,11 @@
 
 **One exception:** Phase 1, done *before* that correction, built Settings' real login history against a genuine new backend table/endpoint. That work stays (it's live and tested) but isn't the model that was repeated — see Section 8.
 
-**Real vs. mock, in one place:**
-- **Real (backend-connected):** signup/login/OTP/KYC, team & role management, team member notes/custom-alert-rules (Milestone 4), account settings, the audit trail, the onboarding video CMS (Milestone 3), and — from Phase 1 of this feedback round — Settings' login-history search/scroll.
-- **Mock/UI-only (this feedback round, Phase 2):** literally everything else described below — both dashboards, the Team Member Profile redesign, Alert Rules governance, the Global Alert Library, the RAG page restructure, the Help & Learning Hub, Calendar's new views, and Team's archive status. All of it is real, working UI running on `frontend/src/lib/store.tsx`'s in-memory mock data — nothing persists to a database, and none of it is visible from a real (non-demo-persona) signed-in session.
+**Update (2026-09-08) — Sections 4 and 5 have since been superseded.** Milestone 4's own milestone-plan tasks (32-34) plus this addendum's items 96/105-108 — everything in Sections 4 and 5 below that this doc originally marked "mock/UI-only" or "still not real" (archive status, Safeguarding Lead, team/invite search + bulk, RAG assignments with access codes, the risk-and-support dashboard, the staged alert model, the Actions pipeline, the Employee×RAG record and its content-free Audit Log) — is now real, backend-connected work. This was a deliberate, one-time exception to the "client feedback = UI/mock-store only" rule recorded above, made explicitly for these items; see `.claude/specs/m4-team-management.md` (local, not version-controlled) for the phase-by-phase implementation plan and `backend/README.md`'s Milestone 4 table for where each piece actually lives. Sections 4 and 5's original text is left as-is below as the historical record of what shipped mock-first; treat their "Still not real" lines as superseded, not current.
+
+**Real vs. mock, in one place (updated 2026-09-08):**
+- **Real (backend-connected):** signup/login/OTP/KYC, team & role management, team member notes/custom-alert-rules, Safeguarding Lead + archive status + search/bulk ops on team & invite lists, RAG assignments with access codes, the member risk-and-support dashboard, the staged alert model + Actions pipeline, the Employee×RAG record (Overview/Conversations-stub/Alerts/Actions/content-free Audit Log), account settings, the audit trail, the onboarding video CMS (Milestone 3), and Settings' login-history search/scroll.
+- **Mock/UI-only:** both dashboards, Alert Rules governance, the Global Alert Library, the RAG page restructure, the Help & Learning Hub, and Calendar's new views. All of it is real, working UI running on `frontend/src/lib/store.tsx`'s in-memory mock data — nothing persists to a database, and none of it is visible from a real (non-demo-persona) signed-in session.
 
 ---
 
@@ -48,6 +50,8 @@
 
 ## 4. Team Members (list page) — ✅ Delivered (both real- and mock-mode)
 
+> **Superseded (2026-09-08):** archive status, Safeguarding Lead, and bulk resend/cancel/archive are now real for backend-connected accounts too, not mock-only as this section originally said - see the M4 team-management spec noted above. This section's own text is left as the historical record.
+
 **Client wants:** invite log and team members list capped at 6 rows with scroll and search, bulk resend/cancel, plus a bulk archive/status action on team members.
 
 **Built:** the real-mode (backend-connected) branch got scroll-cap/search/bulk-resend-cancel in **Phase 1** (calls the existing single-item `resend`/`cancel` endpoints per selected id — no new backend needed for that part). Archive status was then added in Phase 2 as a **mock-only** feature: `AppUser.status` (`"active" | "archived"`), a "Show archived" toggle, and bulk archive/unarchive — this only applies to the demo-persona (mock) team list, since the real backend `User` model still has no archived/inactive column.
@@ -57,6 +61,8 @@
 ---
 
 ## 5. Team Member Profile — ✅ Delivered (mock)
+
+> **Superseded (2026-09-08):** the risk-and-support dashboard, RAG assignments + access codes, the staged alert model, the Actions pipeline, and the Employee×RAG record (including its content-free Audit Log) are now real for backend-connected accounts, not a UI-only validation as this section originally said. The Safeguarding Lead gate described below is unchanged in spirit but now checks a real `User.is_safeguarding_lead` column via `PATCH /team/{id}/safeguarding-lead`, not just a seeded mock flag. See the M4 team-management spec noted above. This section's own text is left as the historical record.
 
 **Client wants** a "risk-and-support dashboard": a header summary line; four summary cards (Assigned RAGs, Conversations, Alerts, Open Actions); RAG cards with a traffic-light status (never colour-only); clicking a RAG opens an Employee × RAG record with Overview/Conversations/Alerts/Actions/Audit Log tabs; a chronological Overview timeline; one-row-per-conversation summaries; Alerts renamed "Alerts & Signals" with a `Context` field and a staged model (Keyword detected → Signal generated → Context assessment → Alert level set → Human review → Outcome); Actions with a 4-stage pipeline; a separate, content-free Audit Log; and conversation content hidden by default except to a Safeguarding Lead.
 
