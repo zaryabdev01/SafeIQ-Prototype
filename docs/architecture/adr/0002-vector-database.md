@@ -1,6 +1,8 @@
 # ADR-002: Vector Database
 
-**Status:** PROPOSED - not ready to accept. Blocked on Milestone 1 item 9 (cost-at-scale validation) and confirmation of regional service availability.
+**Status:** SUPERSEDED FOR MVP by [ADR-006](0006-vector-store-mvp-pgvector.md) (2026-09-10) - MVP / Milestone 5 uses pgvector on the existing Aurora Postgres, per-tenant schema. The OpenSearch analysis below stands as the documented scale-out option if retrieval quality or scale later warrants it.
+
+**Original status:** PROPOSED - not ready to accept. Blocked on Milestone 1 item 9 (cost-at-scale validation) and confirmation of regional service availability.
 
 ## Context
 

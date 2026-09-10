@@ -52,3 +52,6 @@ yarn-error.log*
 .env.*
 !.env.example
 !.env.*.example
+
+# Claude Code per-machine settings (shared specs under .claude/specs/ are tracked)
+.claude/settings.local.json
